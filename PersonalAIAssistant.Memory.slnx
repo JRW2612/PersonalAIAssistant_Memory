@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="PersonalAIAssistant.Events/PersonalAIAssistant.Memory.Events.csproj" />
+  <Project Path="PersonalAIAssistant.Memory.Business/PersonalAIAssistant.Memory.Business.csproj" />
+  <Project Path="PersonalAIAssistant.Memory.Core/PersonalAIAssistant.Memory.Core.csproj" Id="2e4ab3d0-432e-4fb0-bc4f-caffc6c3365e" />
+  <Project Path="PersonalAIAssistant.Memory.Infrastructure/PersonalAIAssistant.Memory.Infrastructure.csproj" Id="bb3a34ae-4246-4020-b11a-9503b8fdda5a" />
+</Solution>
