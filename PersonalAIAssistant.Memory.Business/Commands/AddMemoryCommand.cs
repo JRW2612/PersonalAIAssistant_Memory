@@ -2,10 +2,13 @@
 
 namespace PersonalAIAssistant.Memory.Business.Commands
 {
-    public class AddMemoryCommand : IRequest<Guid>
-    {
-        public string RawText { get; set; }
-        public string Source { get; set; }
-        public List<string> Tags { get; set; } = new();
-    }
+    public record AddMemoryCommand
+    (
+        string RawText,
+        string Source,
+        IReadOnlyList<string> Tags,
+        string UserId,
+        string? CorrelationId = null
+    ) : IRequest<Guid>;
 }
+

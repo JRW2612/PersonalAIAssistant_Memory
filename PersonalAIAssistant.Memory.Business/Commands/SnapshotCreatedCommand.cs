@@ -2,10 +2,10 @@
 
 namespace PersonalAIAssistant.Memory.Business.Commands
 {
-    public class SnapshotCreatedCommand : IRequest<Guid>
-    {
-        public Guid AggregateIdSnapshot { get; set; }
-        public string SnapshotPayload { get; set; }   // JSON summary of state
-        public int SnapshotVersion { get; set; }
-    }
+    public class SnapshotCreatedCommand
+    (
+         Guid AggregateIdSnapshot,
+         string SnapshotPayload,   // JSON summary of state
+         int SnapshotVersion
+    ) : IRequest<Guid>;
 }

@@ -2,10 +2,10 @@
 
 namespace PersonalAIAssistant.Memory.Business.Commands
 {
-    public class MemoryIndexedCommand : IRequest<bool>
-    {
-        public Guid MemoryId { get; set; }
-        public string EmbeddingId { get; set; }
-        public string VectorProvider { get; set; }   // e.g. "Pinecone", "FAISS"
-    }
+    public class MemoryIndexedCommand
+    (
+         Guid MemoryId,
+         string EmbeddingId,
+         string VectorProvider  // e.g. "Pinecone", "FAISS"
+    ) : IRequest<bool>;
 }

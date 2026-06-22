@@ -5,6 +5,7 @@
         Chat,
         Email,
         Note,
-        System
+        System,
+        Other
     }
 }

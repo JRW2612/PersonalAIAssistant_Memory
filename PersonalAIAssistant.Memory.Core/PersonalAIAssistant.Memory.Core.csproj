@@ -7,10 +7,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Folder Include="Domains\ValueObjects\" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\PersonalAIAssistant.Events\PersonalAIAssistant.Memory.Events.csproj" />
   </ItemGroup>
 
