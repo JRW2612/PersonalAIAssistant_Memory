@@ -56,12 +56,11 @@ namespace PersonalAIAssistant.Memory.Business.Workers
                             var aggregate = new MemoryAggregate();
                             if (snapshot != null)
                             {
-                                // Snapshot payload deserialization is infra-specific; assume snapshot payload is JSON of helper model
                                 aggregate = MemoryAggregateFactory.RehydrateFromSnapshot(snapshot, events);
                             }
                             else
                             {
-                                aggregate.LoadFromHistory(events);
+                                aggregate = MemoryAggregateFactory.RehydrateFromEvents(events);
                             }
 
                             var payload = MemoryAggregateFactory.CreateSnapshotPayload(aggregate);
