@@ -1,5 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
-using PersonalAIAssistant.Memory.Core.Interfaces;
+using PersonalAIAssistant.Memory.Core.Interfaces.Others;
 using PersonalAIAssistant.Memory.Events;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.InMemory

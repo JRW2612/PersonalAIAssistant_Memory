@@ -2,7 +2,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PersonalAIAssistant.Memory.Core.Domains;
-using PersonalAIAssistant.Memory.Core.Interfaces;
+using PersonalAIAssistant.Memory.Core.Interfaces.Others;
 using PersonalAIAssistant.Memory.Infrastructure.Mongo;
 
 namespace PersonalAIAssistant.Memory.Business.Workers

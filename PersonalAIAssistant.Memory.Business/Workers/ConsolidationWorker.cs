@@ -2,7 +2,7 @@
 using Microsoft.Extensions.Logging;
 using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Exceptions;
-using PersonalAIAssistant.Memory.Core.Interfaces;
+using PersonalAIAssistant.Memory.Core.Interfaces.Others;
 using PersonalAIAssistant.Memory.Core.Models;
 using PersonalAIAssistant.Memory.Infrastructure.Mongo;
 using PersonalAIAssistant.Memory.Infrastructure.Sql;

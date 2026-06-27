@@ -1,6 +1,6 @@
 ﻿using PersonalAIAssistant.Memory.Events;
 
-namespace PersonalAIAssistant.Memory.Core.Interfaces
+namespace PersonalAIAssistant.Memory.Core.Interfaces.Others
 {
     public interface IEventBus
     {

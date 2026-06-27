@@ -120,5 +120,22 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
                 await _db.SaveChangesAsync(cancellationToken);
             }
         }
+
+        public async Task ExecuteInTransactionAsync(Func<CancellationToken, Task> operation, CancellationToken ct)
+        {
+            // Use a transaction so all Upserts and MarkProcessed happen atomically
+            await using var tx = await _db.Database.BeginTransactionAsync(ct);
+            try
+            {
+                await operation(ct);
+                await _db.SaveChangesAsync(ct);
+                await tx.CommitAsync(ct);
+            }
+            catch
+            {
+                await tx.RollbackAsync(ct);
+                throw;
+            }
+        }
     }
 }

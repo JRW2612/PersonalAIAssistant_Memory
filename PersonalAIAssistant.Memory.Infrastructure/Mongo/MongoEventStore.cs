@@ -85,6 +85,13 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
             public string Payload { get; set; } = string.Empty; // serialized MemoryEvent payload (JSON)
             public string AggregateId { get; set; } = string.Empty;
 
+            // Dynamically build a map of "EventName" -> Type upon initialization
+            // This completely eliminates magic strings and switch statements.
+            private static readonly Dictionary<string, Type> EventTypeMap = typeof(MemoryEvent).Assembly
+                .GetTypes()
+                .Where(t => t.IsSubclassOf(typeof(MemoryEvent)) && !t.IsAbstract)
+                .ToDictionary(t => t.Name, t => t);
+
             public static EventDocument FromMemoryEvent(string streamId, MemoryEvent evt)
             {
                 return new EventDocument
@@ -93,27 +100,36 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
                     EventId = evt.EventId,
                     Version = evt.Version,
                     Timestamp = evt.Timestamp,
-                    EventType = evt.EventType,
-                    Payload = System.Text.Json.JsonSerializer.Serialize(evt),
+                    EventType = evt.GetType().Name, // Safely stores "MemoryAddedEvent" etc.
+                    Payload = System.Text.Json.JsonSerializer.Serialize(evt, evt.GetType()), // Serialize as concrete type
                     AggregateId = evt.AggregateId.ToString()
                 };
             }
 
             public MemoryEvent ToMemoryEvent()
             {
-                // Deserialize by EventType to concrete event type if needed.
-                // For simplicity, deserialize to MemoryEvent base; if you need concrete types, use a type map.
                 var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                var baseEvt = System.Text.Json.JsonSerializer.Deserialize<MemoryEvent>(Payload, options);
-                if (baseEvt != null)
+
+                // 1. Look up the specific class type dynamically
+                if (!EventTypeMap.TryGetValue(EventType, out var specificType))
                 {
-                    baseEvt.EventId = EventId;
-                    baseEvt.Version = Version;
-                    baseEvt.Timestamp = Timestamp;
-                    return baseEvt;
+                    // Fallback to base type if the class isn't found
+                    specificType = typeof(MemoryEvent);
                 }
 
-                throw new InvalidOperationException("Failed to deserialize event payload.");
+                // 2. Deserialize directly into the specific type
+                var evt = (MemoryEvent?)System.Text.Json.JsonSerializer.Deserialize(Payload, specificType, options);
+
+                if (evt != null)
+                {
+                    // 3. Restore metadata tracked by the document wrapper
+                    evt.EventId = EventId;
+                    evt.Version = Version;
+                    evt.Timestamp = Timestamp;
+                    return evt;
+                }
+
+                throw new InvalidOperationException($"Failed to deserialize event payload for type {EventType}.");
             }
         }
     }

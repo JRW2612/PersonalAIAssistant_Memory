@@ -6,6 +6,7 @@
         Email,
         Note,
         System,
+        User,
         Other
     }
 }

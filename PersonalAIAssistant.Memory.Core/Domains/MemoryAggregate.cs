@@ -188,7 +188,7 @@ namespace PersonalAIAssistant.Memory.Core.Domains
 
             // restore version and status
             agg.Version = dto.Version;
-            agg.Status = MemoryStatus.Active; // or restore if you store status in snapshot
+            agg.Status = dto.Status; // or restore if you store status in snapshot
 
             return agg;
         }

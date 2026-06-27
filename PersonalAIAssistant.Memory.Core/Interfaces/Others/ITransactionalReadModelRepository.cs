@@ -1,4 +1,4 @@
-﻿namespace PersonalAIAssistant.Memory.Core.Interfaces
+﻿namespace PersonalAIAssistant.Memory.Core.Interfaces.Others
 {
 
     /// <summary>

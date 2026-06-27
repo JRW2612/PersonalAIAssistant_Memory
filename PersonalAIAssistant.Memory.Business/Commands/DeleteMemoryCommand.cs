@@ -2,9 +2,10 @@
 
 namespace PersonalAIAssistant.Memory.Business.Commands
 {
-    public class DeleteMemoryCommand
+    public record DeleteMemoryCommand
    (
-         Guid MemoryId,
-         string Reason  // e.g. "user request", "TTL expired"
-    ) : IRequest<bool>;
+        Guid MemoryId,
+        string Reason, // e.g. "user request", "TTL expired"
+        string UserId
+    ) : IRequest<Unit>;
 }
