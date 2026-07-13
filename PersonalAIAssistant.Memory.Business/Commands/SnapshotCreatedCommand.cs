@@ -2,7 +2,7 @@
 
 namespace PersonalAIAssistant.Memory.Business.Commands
 {
-    public class SnapshotCreatedCommand
+    public record SnapshotCreatedCommand
     (
          Guid AggregateIdSnapshot,
          string SnapshotPayload,   // JSON summary of state

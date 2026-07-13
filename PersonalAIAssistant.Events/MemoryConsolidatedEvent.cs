@@ -4,7 +4,7 @@
     {
         public Guid NewMemoryId { get; set; }
         public List<Guid> MergedMemoryIds { get; set; } = new();
-        public string ConsolidatedText { get; set; }
+        public string ConsolidatedText { get; set; } = string.Empty;
         public List<string> ProvenanceLinks { get; set; } = new();
     }
 }

@@ -2,11 +2,11 @@
 
 namespace PersonalAIAssistant.Memory.Business.Commands
 {
-    public class ConsolidateMemoriesCommand
+    public record ConsolidateMemoriesCommand
     (
          Guid NewMemoryId,
-         List<Guid> MergedMemoryIds,
+         IReadOnlyList<Guid> MergedMemoryIds,
          string ConsolidatedText,
-         List<string> ProvenanceLinks
+         IReadOnlyList<string> ProvenanceLinks
     ) : IRequest<Guid>;
 }

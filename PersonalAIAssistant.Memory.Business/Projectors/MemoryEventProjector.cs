@@ -42,20 +42,17 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
             if (await _readRepo.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
 
             // If RawText was updated, update summary/token count
-            if (evt.UpdatedFields != null && evt.UpdatedFields.TryGetValue(nameof(MemoryReadModel.Summary), out var newSummary))
+            if (evt.UpdatedFields != null && evt.UpdatedFields.TryGetValue("RawText", out var newText))
             {
+                var summary = newText.Length > 300 ? newText[..300] + "..." : newText;
                 var model = new MemoryReadModel
                 {
                     MemoryId = evt.AggregateId,
-                    Summary = newSummary,
-                    TokenCount = CountTokens(newSummary),
+                    Summary = summary,
+                    TokenCount = CountTokens(summary),
                     Archived = false
                 };
                 await _readRepo.UpsertAsync(model, ct);
-            }
-            else if (evt.UpdatedFields != null && evt.UpdatedFields.TryGetValue(nameof(MemoryReadModel.Summary), out _))
-            {
-                // handled above
             }
             else
             {

@@ -2,7 +2,7 @@
 
 namespace PersonalAIAssistant.Memory.Business.Commands
 {
-    public class CompressMemoryCommand
+    public record CompressMemoryCommand
     (
          Guid OriginalMemoryId,
          string CompressedText,

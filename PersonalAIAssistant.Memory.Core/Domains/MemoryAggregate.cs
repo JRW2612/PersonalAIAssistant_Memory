@@ -41,7 +41,7 @@ namespace PersonalAIAssistant.Memory.Core.Domains
         public void AddMemory(string rawText, MemorySource source, IEnumerable<string>? tags = null, string? userId = null, string? correlationId = null)
         {
             CoreGuard.NotNullOrWhiteSpace(rawText, nameof(rawText));
-            CoreGuard.NotDefault(source, nameof(source));
+            if (source == MemorySource.Unknown) throw new DomainException("source must be a known value.");
 
             var newId = Id.Equals(default(MemoryId)) ? MemoryId.New() : Id;
             var evt = new MemoryAddedEvent

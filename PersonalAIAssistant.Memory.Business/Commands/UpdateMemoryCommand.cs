@@ -2,9 +2,9 @@
 
 namespace PersonalAIAssistant.Memory.Business.Commands
 {
-    public class UpdateMemoryCommand
+    public record UpdateMemoryCommand
     (
          Guid MemoryId,
-         Dictionary<string, string> UpdatedFields = null
+         IReadOnlyDictionary<string, string>? UpdatedFields = null
     ) : IRequest<Guid>;
 }

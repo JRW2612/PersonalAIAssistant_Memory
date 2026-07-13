@@ -2,6 +2,7 @@
 {
     public enum MemorySource
     {
+        Unknown = -1,
         Chat,
         Email,
         Note,

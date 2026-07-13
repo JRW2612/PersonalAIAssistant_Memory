@@ -2,7 +2,7 @@
 
 namespace PersonalAIAssistant.Memory.Business.Commands
 {
-    public class MemoryIndexedCommand
+    public record MemoryIndexedCommand
     (
          Guid MemoryId,
          string EmbeddingId,
