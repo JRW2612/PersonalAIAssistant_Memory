@@ -10,6 +10,11 @@ namespace PersonalAIAssistant.Memory.Core.Domains
 {
     public class MemoryAggregate
     {
+
+        // Constructors
+        public MemoryAggregate(MemoryId id) => Id = id;
+        public MemoryAggregate() { }
+
         // State
         public MemoryId Id { get; private set; }
         public int Version { get; private set; }
@@ -26,9 +31,7 @@ namespace PersonalAIAssistant.Memory.Core.Domains
         private readonly List<MemoryEvent> _uncommittedEvents = new();
         public IReadOnlyList<MemoryEvent> UncommittedEvents => _uncommittedEvents.AsReadOnly();
 
-        // Constructors
-        public MemoryAggregate(MemoryId id) => Id = id;
-        public MemoryAggregate() { }
+
 
         // Rehydrate
         public void LoadFromHistory(IEnumerable<MemoryEvent> history)
