@@ -7,6 +7,7 @@ namespace PersonalAIAssistant.Memory.Business.Commands
          Guid OriginalMemoryId,
          string CompressedText,
          string CompressionModel,   // e.g. "GPT-4 summary"
-         int TokenCount
+         int TokenCount,
+         string UserId
     ) : IRequest<Guid>;
 }
