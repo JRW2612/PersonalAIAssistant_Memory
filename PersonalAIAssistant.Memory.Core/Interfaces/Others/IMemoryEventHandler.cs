@@ -1,4 +1,4 @@
-﻿using PersonalAIAssistant.Memory.Core.DTOs;
+﻿using PersonalAIAssistant.Memory.Events;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,8 +7,8 @@ using System.Threading.Tasks;
 
 namespace PersonalAIAssistant.Memory.Core.Interfaces.Others
 {
-    public interface IEmbeddingService
+    public interface IMemoryEventHandler
     {
-        Task<EmbeddingResult> GenerateEmbeddingAsync(string text, CancellationToken ct);
+        Task HandleAsync(MemoryEvent evt, CancellationToken ct);
     }
 }
