@@ -1,4 +1,4 @@
-﻿// PersonalAIAssistant.Memory.Infrastructure.EF/ReadModelDbContext.cs
+// PersonalAIAssistant.Memory.Infrastructure.EF/ReadModelDbContext.cs
 using Microsoft.EntityFrameworkCore;
 using PersonalAIAssistant.Memory.Core.Entities;
 
@@ -20,6 +20,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
                 b.Property(x => x.StreamId).IsRequired().HasMaxLength(200);
                 b.Property(x => x.Summary).IsRequired();
                 b.Property(x => x.TokenCount).IsRequired();
+                b.Property(x => x.Importance).IsRequired().HasConversion<int>();
                 b.Property(x => x.CreatedAt).IsRequired();
                 b.Property(x => x.Archived).IsRequired();
             });

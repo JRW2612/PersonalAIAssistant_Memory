@@ -1,4 +1,4 @@
-﻿using PersonalAIAssistant.Memory.Core.Exceptions;
+using PersonalAIAssistant.Memory.Core.Exceptions;
 
 namespace PersonalAIAssistant.Memory.Core.Domains.ValueObjects
 {
@@ -13,6 +13,6 @@ namespace PersonalAIAssistant.Memory.Core.Domains.ValueObjects
         public static MemoryId New() => new MemoryId(Guid.NewGuid());
         public override string ToString() => Value.ToString();
         public static implicit operator Guid(MemoryId id) => id.Value;
-        public static implicit operator MemoryId(Guid g) => new MemoryId(g);
+        public static explicit operator MemoryId(Guid g) => new MemoryId(g);
     }
 }

@@ -1,4 +1,6 @@
-﻿using MediatR;
+using MediatR;
+using PersonalAIAssistant.Memory.Core.Domains.Enums;
+using PersonalAIAssistant.Memory.Core.Interfaces.Others;
 
 namespace PersonalAIAssistant.Memory.Business.Commands
 {
@@ -8,7 +10,7 @@ namespace PersonalAIAssistant.Memory.Business.Commands
         string Source,
         IReadOnlyList<string> Tags,
         string UserId,
+        MemoryImportance Importance = MemoryImportance.Medium,
         string? CorrelationId = null
-    ) : IRequest<Guid>;
+    ) : IRequest<Guid>, ICorrelatedRequest;
 }
-

@@ -1,12 +1,13 @@
-﻿// PersonalAIAssistant.Memory.Infrastructure.EF/SqlReadModelRepository.cs
+// PersonalAIAssistant.Memory.Infrastructure.EF/SqlReadModelRepository.cs
 using Microsoft.EntityFrameworkCore;
 using PersonalAIAssistant.Memory.Core.Entities;
 using PersonalAIAssistant.Memory.Core.Models;
-using PersonalAIAssistant.Memory.Infrastructure.Sql;
+using PersonalAIAssistant.Memory.Core.Interfaces.Sql;
+using PersonalAIAssistant.Memory.Core.Interfaces.Others;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.EF
 {
-    public class SqlReadModelRepository : IReadModelRepository
+    public class SqlReadModelRepository : IReadModelRepository, ITransactionalReadModelRepository
     {
         private readonly ReadModelDbContext _db;
 
@@ -26,6 +27,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
                     StreamId = $"memory-{model.MemoryId}",
                     Summary = model.Summary,
                     TokenCount = model.TokenCount,
+                    Importance = model.Importance,
                     CreatedAt = DateTime.UtcNow,
                     Archived = model.Archived,
                     LastProcessedAt = DateTime.UtcNow
@@ -36,6 +38,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
             {
                 existing.Summary = model.Summary;
                 existing.TokenCount = model.TokenCount;
+                existing.Importance = model.Importance;
                 existing.Archived = model.Archived;
                 existing.LastProcessedAt = DateTime.UtcNow;
                 _db.MemoryReadModels.Update(existing);

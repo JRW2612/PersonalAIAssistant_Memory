@@ -1,6 +1,6 @@
-﻿using PersonalAIAssistant.Memory.Core.Models;
+using PersonalAIAssistant.Memory.Core.Models;
 
-namespace PersonalAIAssistant.Memory.Infrastructure.Sql
+namespace PersonalAIAssistant.Memory.Core.Interfaces.Sql
 {
     public interface IReadModelRepository
     {

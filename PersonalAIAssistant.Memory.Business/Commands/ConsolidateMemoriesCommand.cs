@@ -1,4 +1,4 @@
-﻿using MediatR;
+using MediatR;
 
 namespace PersonalAIAssistant.Memory.Business.Commands
 {
@@ -7,6 +7,7 @@ namespace PersonalAIAssistant.Memory.Business.Commands
          Guid NewMemoryId,
          IReadOnlyList<Guid> MergedMemoryIds,
          string ConsolidatedText,
+         string UserId,
          IReadOnlyList<string> ProvenanceLinks
     ) : IRequest<Guid>;
 }

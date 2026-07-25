@@ -1,18 +1,18 @@
-﻿using MediatR;
+using MediatR;
 using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using PersonalAIAssistant.Memory.Core.Interfaces.Others;
 
 namespace PersonalAIAssistant.Memory.Business.Behaviors
 {
     /// <summary>
-    /// Logs every command/query with a correlation id and timing, and flags slow requests.
+    /// Logs every command/query with a correlation ID and elapsed time, and flags slow requests.
+    /// The correlation ID is taken from the request itself when it implements
+    /// <see cref="ICorrelatedRequest"/>; otherwise a fresh ID is generated so every request
+    /// is always traceable.
     /// </summary>
-    public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse> where TRequest : notnull
+    public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
+        where TRequest : notnull
     {
         private readonly ILogger<LoggingBehavior<TRequest, TResponse>> _logger;
         private const int SlowRequestThresholdMs = 1000;
@@ -21,14 +21,26 @@ namespace PersonalAIAssistant.Memory.Business.Behaviors
         {
             _logger = logger;
         }
-        public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken cancellationToken)
+
+        public async Task<TResponse> Handle(
+            TRequest request,
+            RequestHandlerDelegate<TResponse> next,
+            CancellationToken cancellationToken)
         {
             var requestName = typeof(TRequest).Name;
-            var correlationId = Guid.NewGuid();
-            var stopwatch=Stopwatch.StartNew();
 
-            _logger.LogInformation("Handling {RequestName} with CorrelationId: {CorrelationId}", requestName, correlationId);
-                       
+            // Prefer the correlation ID carried by the request so traces are consistent
+            // across the whole request pipeline; fall back to a new GUID when absent.
+            var correlationId = request is ICorrelatedRequest correlated && correlated.CorrelationId is not null
+                ? correlated.CorrelationId
+                : Guid.NewGuid().ToString();
+
+            var stopwatch = Stopwatch.StartNew();
+
+            _logger.LogInformation(
+                "Handling {RequestName} [CorrelationId={CorrelationId}]",
+                requestName, correlationId);
+
             try
             {
                 var response = await next(cancellationToken);
@@ -36,18 +48,26 @@ namespace PersonalAIAssistant.Memory.Business.Behaviors
 
                 if (stopwatch.ElapsedMilliseconds > SlowRequestThresholdMs)
                 {
-                    _logger.LogWarning("Slow request detected: {RequestName} with CorrelationId: {CorrelationId} took {ElapsedMilliseconds} ms", requestName, correlationId, stopwatch.ElapsedMilliseconds);
+                    _logger.LogWarning(
+                        "Slow request: {RequestName} took {ElapsedMs} ms [CorrelationId={CorrelationId}]",
+                        requestName, stopwatch.ElapsedMilliseconds, correlationId);
                 }
                 else
                 {
-                    _logger.LogInformation("Handled {RequestName} with CorrelationId: {CorrelationId} in {ElapsedMilliseconds} ms", requestName, correlationId, stopwatch.ElapsedMilliseconds);
+                    _logger.LogInformation(
+                        "Handled {RequestName} in {ElapsedMs} ms [CorrelationId={CorrelationId}]",
+                        requestName, stopwatch.ElapsedMilliseconds, correlationId);
                 }
+
                 return response;
             }
             catch (Exception ex)
             {
                 stopwatch.Stop();
-                _logger.LogError(ex, "Error occurred while handling {RequestName} with CorrelationId: {CorrelationId}", requestName, correlationId);
+                _logger.LogError(
+                    ex,
+                    "Error handling {RequestName} after {ElapsedMs} ms [CorrelationId={CorrelationId}]",
+                    requestName, stopwatch.ElapsedMilliseconds, correlationId);
                 throw;
             }
         }

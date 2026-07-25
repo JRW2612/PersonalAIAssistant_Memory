@@ -1,4 +1,4 @@
-﻿using PersonalAIAssistant.Memory.Core.Domains.Enums;
+using PersonalAIAssistant.Memory.Core.Domains.Enums;
 
 namespace PersonalAIAssistant.Memory.Core.DTOs
 {
@@ -6,7 +6,8 @@ namespace PersonalAIAssistant.Memory.Core.DTOs
     {
         public Guid Id { get; init; }
         public int Version { get; init; }
-        public MemoryStatus Status { get; init; } // <-- ADDED THIS
+        public MemoryStatus Status { get; init; }
+        public MemoryImportance Importance { get; init; } = MemoryImportance.Medium;
         public string RawText { get; init; } = string.Empty;
         public string? CompressedText { get; init; }
         public string? ConsolidatedText { get; init; }
@@ -14,3 +15,4 @@ namespace PersonalAIAssistant.Memory.Core.DTOs
         public List<string> Tags { get; init; } = new();
     }
 }
+

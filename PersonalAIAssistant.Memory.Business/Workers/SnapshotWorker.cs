@@ -1,9 +1,9 @@
-﻿using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Interfaces.Others;
-using PersonalAIAssistant.Memory.Infrastructure.Mongo;
+using PersonalAIAssistant.Memory.Core.Interfaces.Mongo;
 
 namespace PersonalAIAssistant.Memory.Business.Workers
 {
@@ -50,18 +50,14 @@ namespace PersonalAIAssistant.Memory.Business.Workers
                         try
                         {
                             var snapshot = await _snapshotRepo.GetLatestSnapshotAsync(streamId, stoppingToken);
-                            var events = await _eventStore.GetEventsAsync(streamId, stoppingToken);
+                            var fromVersion = snapshot?.Version ?? 0;
+                            var tailEvents = snapshot != null
+                                ? await _eventStore.GetEventsFromVersionAsync(streamId, fromVersion, stoppingToken)
+                                : await _eventStore.GetEventsAsync(streamId, stoppingToken);
 
-                            // Rehydrate aggregate using snapshot if present
-                            var aggregate = new MemoryAggregate();
-                            if (snapshot != null)
-                            {
-                                aggregate = MemoryAggregateFactory.RehydrateFromSnapshot(snapshot, events);
-                            }
-                            else
-                            {
-                                aggregate = MemoryAggregateFactory.RehydrateFromEvents(events);
-                            }
+                            var aggregate = snapshot != null
+                                ? MemoryAggregateFactory.RehydrateFromSnapshot(snapshot, tailEvents)
+                                : MemoryAggregateFactory.RehydrateFromEvents(tailEvents);
 
                             var payload = MemoryAggregateFactory.CreateSnapshotPayload(aggregate);
                             await _snapshotRepo.SaveSnapshotAsync(streamId, payload, aggregate.Version, stoppingToken);
@@ -72,15 +68,25 @@ namespace PersonalAIAssistant.Memory.Business.Workers
                         }
                     }
                 }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "SnapshotWorker top-level error");
                 }
 
-                await Task.Delay(_opts.Value.PollInterval, stoppingToken);
+                try
+                {
+                    await Task.Delay(_opts.Value.PollInterval, stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
             }
             _logger.LogInformation("SnapshotWorker stopping.");
         }
     }
 }
-

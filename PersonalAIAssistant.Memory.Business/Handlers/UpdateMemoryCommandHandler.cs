@@ -7,46 +7,50 @@ using PersonalAIAssistant.Memory.Core.Interfaces.Mongo;
 
 namespace PersonalAIAssistant.Memory.Business.Handlers
 {
-    public class DeleteMemoryCommandHandler : IRequestHandler<DeleteMemoryCommand, Unit>
+    /// <summary>
+    /// Handles <see cref="UpdateMemoryCommand"/> by rehydrating the aggregate from the event
+    /// store, applying the <c>UpdateRawText</c> domain method for any supported field updates,
+    /// persisting the resulting events, and publishing them to the event bus.
+    /// </summary>
+    public class UpdateMemoryCommandHandler : IRequestHandler<UpdateMemoryCommand, Guid>
     {
         private readonly IEventStore _eventStore;
         private readonly IEventBus _eventBus;
 
-        public DeleteMemoryCommandHandler(IEventStore eventStore, IEventBus eventBus)
+        public UpdateMemoryCommandHandler(IEventStore eventStore, IEventBus eventBus)
         {
             _eventStore = eventStore;
             _eventBus = eventBus;
         }
 
-        public async Task<Unit> Handle(DeleteMemoryCommand request, CancellationToken cancellationToken)
+        public async Task<Guid> Handle(UpdateMemoryCommand request, CancellationToken cancellationToken)
         {
             var streamId = $"memory-{request.MemoryId}";
-
             var history = await _eventStore.GetEventsAsync(streamId, cancellationToken);
+
             if (history == null || !history.Any())
-            {
                 throw new KeyNotFoundException($"Memory with ID {request.MemoryId} not found.");
-            }
 
             var aggregate = new MemoryAggregate(new MemoryId(request.MemoryId));
             aggregate.LoadFromHistory(history);
 
-            aggregate.Delete(request.Reason, request.UserId);
+            // Apply each supported field update via the appropriate domain method.
+            if (request.UpdatedFields != null &&
+                request.UpdatedFields.TryGetValue(nameof(MemoryAggregate.RawText), out var newText))
+            {
+                aggregate.UpdateRawText(newText, request.UserId);
+            }
 
             var uncommittedEvents = aggregate.UncommittedEvents.ToList();
             if (!uncommittedEvents.Any())
-            {
-                return Unit.Value;
-            }
+                return aggregate.Id.Value;
 
-            int expectedVersion = aggregate.Version - uncommittedEvents.Count;
+            var expectedVersion = aggregate.Version - uncommittedEvents.Count;
             await _eventStore.AppendEventsAsync(streamId, uncommittedEvents, expectedVersion, cancellationToken);
-
-            // Publish all events in one batch
             await _eventBus.PublishAsync(uncommittedEvents, cancellationToken);
-
             aggregate.ClearUncommittedEvents();
-            return Unit.Value;
+
+            return aggregate.Id.Value;
         }
     }
 }

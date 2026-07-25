@@ -1,12 +1,18 @@
-﻿// PersonalAIAssistant.Memory.Business.Projectors/MemoryEventProjector.cs
+// PersonalAIAssistant.Memory.Business.Projectors/MemoryEventProjector.cs
 using PersonalAIAssistant.Memory.Core.Interfaces.Others;
+using PersonalAIAssistant.Memory.Core.Interfaces.Sql;
 using PersonalAIAssistant.Memory.Core.Models;
+using PersonalAIAssistant.Memory.Core.Domains.Enums;
 using PersonalAIAssistant.Memory.Events;
-using PersonalAIAssistant.Memory.Infrastructure.Sql;
 
 namespace PersonalAIAssistant.Memory.Business.Projectors
 {
-    public class MemoryEventProjector
+    /// <summary>
+    /// Projects domain events into the SQL read model.
+    /// Implements <see cref="IMemoryEventHandler"/> so it can be registered with
+    /// <see cref="IEventBus"/> and receive events automatically after they are published.
+    /// </summary>
+    public class MemoryEventProjector : IMemoryEventHandler
     {
         private readonly IReadModelRepository _readRepo;
 
@@ -15,8 +21,18 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
             _readRepo = readRepo;
         }
 
-        // Existing single-event handlers (unchanged)
-        // MemoryAddedEvent
+        // ─── IMemoryEventHandler ─────────────────────────────────────────────────
+
+        /// <summary>Entry point used by <see cref="IEventBus"/> for single-event dispatch.</summary>
+        public async Task HandleAsync(MemoryEvent evt, CancellationToken ct)
+            => await ApplyEventIfNotProcessedAsync(evt, ct);
+
+        /// <summary>Entry point used by <see cref="IEventBus"/> for batch-event dispatch.</summary>
+        public Task HandleAsync(IEnumerable<MemoryEvent> events, CancellationToken ct)
+            => Handle(events, ct);
+
+        // ─── Typed handlers ──────────────────────────────────────────────────────
+
         public async Task Handle(MemoryAddedEvent evt, CancellationToken ct)
         {
             if (evt == null) return;
@@ -28,20 +44,19 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
                 MemoryId = evt.AggregateId,
                 Summary = summary,
                 TokenCount = CountTokens(summary),
-                Archived = false
+                Archived = false,
+                Importance = Enum.TryParse<MemoryImportance>(evt.Importance, ignoreCase: true, out var imp) ? imp : MemoryImportance.Medium
             };
 
             await _readRepo.UpsertAsync(model, ct);
             await _readRepo.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
         }
 
-        // MemoryUpdatedEvent
         public async Task Handle(MemoryUpdatedEvent evt, CancellationToken ct)
         {
             if (evt == null) return;
             if (await _readRepo.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
 
-            // If RawText was updated, update summary/token count
             if (evt.UpdatedFields != null && evt.UpdatedFields.TryGetValue("RawText", out var newText))
             {
                 var summary = newText.Length > 300 ? newText[..300] + "..." : newText;
@@ -54,21 +69,15 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
                 };
                 await _readRepo.UpsertAsync(model, ct);
             }
-            else
-            {
-                // For other updates, we may choose to refresh read model by rehydrating or ignore.
-            }
 
             await _readRepo.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
         }
 
-        // MemoryCompressedEvent
         public async Task Handle(MemoryCompressedEvent evt, CancellationToken ct)
         {
             if (evt == null) return;
             if (await _readRepo.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
 
-            // Update read model summary with compressed text (shorter representation)
             var summary = evt.CompressedText ?? string.Empty;
             var model = new MemoryReadModel
             {
@@ -82,7 +91,6 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
             await _readRepo.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
         }
 
-        // MemoryConsolidatedEvent
         public async Task Handle(MemoryConsolidatedEvent evt, CancellationToken ct)
         {
             if (evt == null) return;
@@ -101,25 +109,24 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
             await _readRepo.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
         }
 
-        // MemoryIndexedEvent (embedding/semantic index)
         public async Task Handle(MemoryIndexedEvent evt, CancellationToken ct)
         {
             if (evt == null) return;
             if (await _readRepo.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
 
-            // Indexing doesn't necessarily change summary; we still mark processed.
+            // Indexing doesn't change the summary; mark processed for idempotency only.
             await _readRepo.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
         }
 
-        // MemoryDeletedEvent
         public async Task Handle(MemoryDeletedEvent evt, CancellationToken ct)
         {
             if (evt == null) return;
             if (await _readRepo.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
 
+            // Use AggregateId (base-class) — not evt.MemoryId (redundant field) — for consistency.
             var model = new MemoryReadModel
             {
-                MemoryId = evt.MemoryId,
+                MemoryId = evt.AggregateId,
                 Summary = string.Empty,
                 TokenCount = 0,
                 Archived = true
@@ -129,22 +136,24 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
             await _readRepo.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
         }
 
-        // SnapshotCreatedEvent (optional: update last processed marker)
         public async Task Handle(SnapshotCreatedEvent evt, CancellationToken ct)
         {
             if (evt == null) return;
             if (await _readRepo.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
 
-            // Snapshot event does not change read model content by default, but mark processed for idempotency.
             await _readRepo.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
         }
 
-        // Batched handler: applies multiple events in a single transaction when supported
+        // ─── Batch handler ───────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Applies multiple events in a single transaction when the repository supports it.
+        /// Events are sorted by aggregate + version to ensure correct ordering.
+        /// </summary>
         public async Task Handle(IEnumerable<MemoryEvent> events, CancellationToken ct)
         {
             if (events == null) return;
 
-            // Normalize and order events by aggregate and version
             var ordered = events
                 .Where(e => e != null)
                 .OrderBy(e => e.AggregateId)
@@ -153,7 +162,6 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
 
             if (!ordered.Any()) return;
 
-            // If repository supports transactions, run the whole batch in one transaction
             if (_readRepo is ITransactionalReadModelRepository transactional)
             {
                 await transactional.ExecuteInTransactionAsync(async token =>
@@ -164,69 +172,46 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
                         await ApplyEventIfNotProcessedAsync(evt, token);
                     }
                 }, ct);
-
                 return;
             }
 
-            // Fallback: process sequentially without a transaction
+            // Fallback: sequential without a transaction
             foreach (var evt in ordered)
             {
                 ct.ThrowIfCancellationRequested();
-                try
-                {
-                    await ApplyEventIfNotProcessedAsync(evt, ct);
-                }
-                catch (Exception)
-                {
-                    // Log and continue (or rethrow depending on your policy) or
-                    // For now, rethrow to surface the failure to the caller
-                    throw;
-                }
+                await ApplyEventIfNotProcessedAsync(evt, ct);
             }
         }
 
-        // Helper: check idempotency and dispatch to concrete handlers
+        // ─── Private helpers ─────────────────────────────────────────────────────
+
         private async Task ApplyEventIfNotProcessedAsync(MemoryEvent evt, CancellationToken ct)
         {
             if (evt == null) return;
-
-            var aggregateId = evt.AggregateId;
-            if (await _readRepo.HasProcessedAsync(aggregateId, evt.Version, ct)) return;
+            if (await _readRepo.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
 
             switch (evt)
             {
-                case MemoryAddedEvent added:
-                    await Handle(added, ct);
-                    break;
-                case MemoryUpdatedEvent updated:
-                    await Handle(updated, ct);
-                    break;
-                case MemoryCompressedEvent compressed:
-                    await Handle(compressed, ct);
-                    break;
-                case MemoryConsolidatedEvent consolidated:
-                    await Handle(consolidated, ct);
-                    break;
-                case MemoryIndexedEvent indexed:
-                    await Handle(indexed, ct);
-                    break;
-                case MemoryDeletedEvent deleted:
-                    await Handle(deleted, ct);
-                    break;
-                case SnapshotCreatedEvent snapshot:
-                    await Handle(snapshot, ct);
-                    break;
+                case MemoryAddedEvent added:           await Handle(added, ct);         break;
+                case MemoryUpdatedEvent updated:       await Handle(updated, ct);       break;
+                case MemoryCompressedEvent compressed: await Handle(compressed, ct);    break;
+                case MemoryConsolidatedEvent consol:   await Handle(consol, ct);        break;
+                case MemoryIndexedEvent indexed:       await Handle(indexed, ct);       break;
+                case MemoryDeletedEvent deleted:       await Handle(deleted, ct);       break;
+                case SnapshotCreatedEvent snapshot:    await Handle(snapshot, ct);      break;
                 default:
-                    // Unknown event type: mark processed to avoid reprocessing, or log and skip
-                    await _readRepo.MarkProcessedAsync(aggregateId, evt.Version, ct);
+                    // Unknown event type: mark processed to prevent infinite reprocessing.
+                    await _readRepo.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
                     break;
+                // NOTE: The typed Handle() overloads already call MarkProcessedAsync internally,
+                // so we do NOT call it again here — that was the duplicate-write bug.
             }
-
-            // Ensure we mark the event as processed (idempotency)
-            await _readRepo.MarkProcessedAsync(aggregateId, evt.Version, ct);
         }
 
-        // Helper: naive token count (if used by single-event handlers)
+        /// <summary>
+        /// Naive whitespace-based token approximation. This is intentionally fast and cheap.
+        /// For accurate LLM token counts, inject a proper tokenizer (e.g. SharpToken / TikToken).
+        /// </summary>
         private static int CountTokens(string text)
         {
             if (string.IsNullOrWhiteSpace(text)) return 0;
