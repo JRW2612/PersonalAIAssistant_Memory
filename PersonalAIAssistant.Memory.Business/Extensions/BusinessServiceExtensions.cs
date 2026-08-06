@@ -6,7 +6,11 @@ using PersonalAIAssistant.Memory.Business.EventHandlers;
 using PersonalAIAssistant.Memory.Business.Projectors;
 using PersonalAIAssistant.Memory.Business.Workers;
 using PersonalAIAssistant.Memory.Core.Interfaces.Others;
+using PersonalAIAssistant.Memory.Business.Security;
 using System.Reflection;
+using Polly;
+using Polly.Retry;
+using Polly.CircuitBreaker;
 
 namespace PersonalAIAssistant.Memory.Business.Extensions
 {
@@ -24,7 +28,41 @@ namespace PersonalAIAssistant.Memory.Business.Extensions
             {
                 cfg.RegisterServicesFromAssembly(assembly);
                 cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
+                cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(AuthorizationBehavior<,>));
                 cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+            });
+
+            // Resilience Pipelines
+            services.AddResiliencePipeline("WorkerRetry", builder =>
+            {
+                builder.AddRetry(new RetryStrategyOptions
+                {
+                    ShouldHandle = new PredicateBuilder().Handle<Exception>(),
+                    Delay = TimeSpan.FromSeconds(2),
+                    MaxRetryAttempts = 3,
+                    BackoffType = DelayBackoffType.Exponential,
+                    UseJitter = true
+                });
+            });
+
+            services.AddResiliencePipeline("AiServiceProtection", builder =>
+            {
+                builder.AddCircuitBreaker(new CircuitBreakerStrategyOptions
+                {
+                    ShouldHandle = new PredicateBuilder().Handle<Exception>(),
+                    FailureRatio = 0.5,
+                    SamplingDuration = TimeSpan.FromSeconds(10),
+                    MinimumThroughput = 5,
+                    BreakDuration = TimeSpan.FromSeconds(30)
+                });
+                builder.AddRetry(new RetryStrategyOptions
+                {
+                    ShouldHandle = new PredicateBuilder().Handle<Exception>(),
+                    Delay = TimeSpan.FromSeconds(1),
+                    MaxRetryAttempts = 3,
+                    BackoffType = DelayBackoffType.Exponential,
+                    UseJitter = true
+                });
             });
 
             // FluentValidation validators

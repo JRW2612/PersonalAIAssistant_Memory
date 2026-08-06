@@ -1,4 +1,5 @@
 using MediatR;
+using PersonalAIAssistant.Memory.Business.Security;
 
 namespace PersonalAIAssistant.Memory.Business.Commands
 {
@@ -7,5 +8,5 @@ namespace PersonalAIAssistant.Memory.Business.Commands
          Guid MemoryId,
          string UserId,
          IReadOnlyDictionary<string, string>? UpdatedFields = null
-    ) : IRequest<Guid>;
+    ) : IRequest<Guid>, IAuthorizedRequest;
 }

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Interfaces.Others;
 using PersonalAIAssistant.Memory.Core.Interfaces.Mongo;
+using Polly.Registry;
 
 namespace PersonalAIAssistant.Memory.Business.Workers
 {
@@ -19,17 +20,20 @@ namespace PersonalAIAssistant.Memory.Business.Workers
         private readonly ILogger<SnapshotWorker> _logger;
         private readonly IEventStore _eventStore;
         private readonly ISnapshotRepository _snapshotRepo;
+        private readonly ResiliencePipelineProvider<string> _resilienceProvider;
         private readonly IOptions<SnapshotWorkerOptions> _opts;
 
         public SnapshotWorker(
             ILogger<SnapshotWorker> logger,
             IEventStore eventStore,
             ISnapshotRepository snapshotRepo,
+            ResiliencePipelineProvider<string> resilienceProvider,
             IOptions<SnapshotWorkerOptions> opts)
         {
             _logger = logger;
             _eventStore = eventStore;
             _snapshotRepo = snapshotRepo;
+            _resilienceProvider = resilienceProvider;
             _opts = opts;
         }
 
@@ -49,18 +53,23 @@ namespace PersonalAIAssistant.Memory.Business.Workers
 
                         try
                         {
-                            var snapshot = await _snapshotRepo.GetLatestSnapshotAsync(streamId, stoppingToken);
-                            var fromVersion = snapshot?.Version ?? 0;
-                            var tailEvents = snapshot != null
-                                ? await _eventStore.GetEventsFromVersionAsync(streamId, fromVersion, stoppingToken)
-                                : await _eventStore.GetEventsAsync(streamId, stoppingToken);
+                            var workerPipeline = _resilienceProvider.GetPipeline("WorkerRetry");
 
-                            var aggregate = snapshot != null
-                                ? MemoryAggregateFactory.RehydrateFromSnapshot(snapshot, tailEvents)
-                                : MemoryAggregateFactory.RehydrateFromEvents(tailEvents);
+                            await workerPipeline.ExecuteAsync(async token => 
+                            {
+                                var snapshot = await _snapshotRepo.GetLatestSnapshotAsync(streamId, token);
+                                var fromVersion = snapshot?.Version ?? 0;
+                                var tailEvents = snapshot != null
+                                    ? await _eventStore.GetEventsFromVersionAsync(streamId, fromVersion, token)
+                                    : await _eventStore.GetEventsAsync(streamId, token);
 
-                            var payload = MemoryAggregateFactory.CreateSnapshotPayload(aggregate);
-                            await _snapshotRepo.SaveSnapshotAsync(streamId, payload, aggregate.Version, stoppingToken);
+                                var aggregate = snapshot != null
+                                    ? MemoryAggregateFactory.RehydrateFromSnapshot(snapshot, tailEvents)
+                                    : MemoryAggregateFactory.RehydrateFromEvents(tailEvents);
+
+                                var payload = MemoryAggregateFactory.CreateSnapshotPayload(aggregate);
+                                await _snapshotRepo.SaveSnapshotAsync(streamId, payload, aggregate.Version, token);
+                            }, stoppingToken);
                         }
                         catch (Exception ex)
                         {

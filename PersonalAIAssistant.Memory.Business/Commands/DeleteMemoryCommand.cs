@@ -1,4 +1,5 @@
-﻿using MediatR;
+using MediatR;
+using PersonalAIAssistant.Memory.Business.Security;
 
 namespace PersonalAIAssistant.Memory.Business.Commands
 {
@@ -7,5 +8,5 @@ namespace PersonalAIAssistant.Memory.Business.Commands
         Guid MemoryId,
         string Reason, // e.g. "user request", "TTL expired"
         string UserId
-    ) : IRequest<Unit>;
+    ) : IRequest<Unit>, IAuthorizedRequest;
 }

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Exceptions;
 using PersonalAIAssistant.Memory.Core.Interfaces.Others;
+using Polly.Registry;
 using PersonalAIAssistant.Memory.Core.Models;
 using PersonalAIAssistant.Memory.Core.Interfaces.Mongo;
 using PersonalAIAssistant.Memory.Core.Interfaces.Sql;
@@ -30,6 +31,7 @@ namespace PersonalAIAssistant.Memory.Business.Workers
         private readonly IEventStore _eventStore;
         private readonly IEventBus _eventBus;
         private readonly ICompressionService _compressionService;
+        private readonly ResiliencePipelineProvider<string> _resilienceProvider;
         private readonly ConsolidationWorkerOptions _opts;
         private readonly SemaphoreSlim _llmSemaphore;
 
@@ -39,6 +41,7 @@ namespace PersonalAIAssistant.Memory.Business.Workers
             IEventStore eventStore,
             IEventBus eventBus,
             ICompressionService compressionService,
+            ResiliencePipelineProvider<string> resilienceProvider,
             IOptions<ConsolidationWorkerOptions> opts)
         {
             _logger = logger;
@@ -46,6 +49,7 @@ namespace PersonalAIAssistant.Memory.Business.Workers
             _eventStore = eventStore;
             _eventBus = eventBus;
             _compressionService = compressionService;
+            _resilienceProvider = resilienceProvider;
             _opts = opts.Value;
             _llmSemaphore = new SemaphoreSlim(_opts.MaxConcurrentLLM);
         }
@@ -94,11 +98,17 @@ namespace PersonalAIAssistant.Memory.Business.Workers
             await _llmSemaphore.WaitAsync(ct);
             try
             {
-                // 1. Compress/summarize text via LLM
-                var compressed = await _compressionService.CompressAsync(candidate.Text, ct);
+                var aiPipeline = _resilienceProvider.GetPipeline("AiServiceProtection");
+                var workerPipeline = _resilienceProvider.GetPipeline("WorkerRetry");
+
+                // 1. Compress/summarize text via LLM (protected by Circuit Breaker & Retry)
+                var compressed = await aiPipeline.ExecuteAsync(async token => 
+                    await _compressionService.CompressAsync(candidate.Text, token), ct);
 
                 // 2. Load aggregate history and apply domain logic
-                var history = await _eventStore.GetEventsAsync(candidate.StreamId, ct);
+                var history = await workerPipeline.ExecuteAsync(async token => 
+                    await _eventStore.GetEventsAsync(candidate.StreamId, token), ct);
+                
                 var aggregate = new MemoryAggregate();
                 aggregate.LoadFromHistory(history);
 
@@ -108,11 +118,12 @@ namespace PersonalAIAssistant.Memory.Business.Workers
                 var newEvents = aggregate.UncommittedEvents.ToList();
                 var expectedVersion = aggregate.Version - newEvents.Count;
 
-                await _eventStore.AppendEventsAsync(candidate.StreamId, newEvents, expectedVersion, ct);
-                await _eventBus.PublishAsync(newEvents, ct);
-
-                // 4. Mark as done
-                await _readRepo.MarkProcessedAsync(candidate.MemoryId, ct);
+                await workerPipeline.ExecuteAsync(async token => 
+                {
+                    await _eventStore.AppendEventsAsync(candidate.StreamId, newEvents, expectedVersion, token);
+                    await _eventBus.PublishAsync(newEvents, token);
+                    await _readRepo.MarkProcessedAsync(candidate.MemoryId, token);
+                }, ct);
 
                 aggregate.ClearUncommittedEvents();
             }
