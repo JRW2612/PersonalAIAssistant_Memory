@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MediatR;
@@ -18,7 +19,14 @@ builder.Services.AddMemoryInfrastructureServices(
     mongoDatabaseName: "DemoMemoryDb"
 );
 
-// 2. Configure Business Layer (including Polly Resilience Pipelines and Workers)
+// 2. Configure AI Providers (OpenAI, Gemini) and Teams Webhook
+//    Keys are read from appsettings.json or user-secrets:
+//      dotnet user-secrets set "AI:OpenAi:ApiKey"  "sk-..."
+//      dotnet user-secrets set "AI:Gemini:ApiKey"  "AIza..."
+//      dotnet user-secrets set "Teams:WebhookUrl"  "https://outlook.office.com/webhook/..."
+builder.Services.AddAiProviders(builder.Configuration);
+
+// 3. Configure Business Layer (including Polly Resilience Pipelines and Workers)
 builder.Services.AddMemoryBusinessServices(
     configureConsolidation: opts => 
     {
@@ -32,12 +40,13 @@ builder.Services.AddMemoryBusinessServices(
     }
 );
 
-// Register Mock AI Services for Demo
+// 4. Register Mock Services for Demo
+//    Replace with real implementations when deploying.
 builder.Services.AddSingleton<PersonalAIAssistant.Memory.Core.Interfaces.Others.ICompressionService, MockCompressionService>();
 builder.Services.AddSingleton<PersonalAIAssistant.Memory.Core.Interfaces.Others.IEmbeddingService, MockEmbeddingService>();
 builder.Services.AddSingleton<PersonalAIAssistant.Memory.Core.Interfaces.Others.IVectorMemoryRepository, MockVectorRepo>();
 
-// 3. Build and Run the Host
+// 5. Build and Run the Host
 using var host = builder.Build();
 
 Console.WriteLine("Host built successfully. Starting workers...");
@@ -83,23 +92,30 @@ await host.RunAsync();
 
 class MockCompressionService : PersonalAIAssistant.Memory.Core.Interfaces.Others.ICompressionService
 {
-    public Task<PersonalAIAssistant.Memory.Core.Models.CompressionResult> CompressAsync(string text, CancellationToken ct)
-    {
-        return Task.FromResult(new PersonalAIAssistant.Memory.Core.Models.CompressionResult("Mock Summary", "mock-model", 10));
-    }
+    public Task<PersonalAIAssistant.Memory.Core.DTOs.CompressionResult> CompressAsync(string text, CancellationToken ct)
+        => Task.FromResult(new PersonalAIAssistant.Memory.Core.DTOs.CompressionResult("Mock Summary", "mock-model", 10));
 }
 
 class MockEmbeddingService : PersonalAIAssistant.Memory.Core.Interfaces.Others.IEmbeddingService
 {
-    public Task<PersonalAIAssistant.Memory.Core.Models.EmbeddingResult> GenerateEmbeddingAsync(string text, CancellationToken ct)
-    {
-        return Task.FromResult(new PersonalAIAssistant.Memory.Core.Models.EmbeddingResult(new float[1536], "mock-model", 10));
-    }
+    public Task<PersonalAIAssistant.Memory.Core.DTOs.EmbeddingResult> GenerateEmbeddingAsync(string text, CancellationToken ct)
+        => Task.FromResult(new PersonalAIAssistant.Memory.Core.DTOs.EmbeddingResult(
+            EmbeddingId: Guid.NewGuid().ToString(),
+            Vector:      new float[1536],
+            Provider:    "mock",
+            Model:       "mock-model"));
 }
 
 class MockVectorRepo : PersonalAIAssistant.Memory.Core.Interfaces.Others.IVectorMemoryRepository
 {
-    public Task UpsertAsync(Guid memoryId, string text, IReadOnlyList<float> vector, CancellationToken ct) => Task.CompletedTask;
-    public Task<IEnumerable<PersonalAIAssistant.Memory.Core.Models.SearchResult>> SearchAsync(IReadOnlyList<float> vector, int limit, CancellationToken ct) => Task.FromResult(Enumerable.Empty<PersonalAIAssistant.Memory.Core.Models.SearchResult>());
-    public Task DeleteAsync(Guid memoryId, CancellationToken ct) => Task.CompletedTask;
+    public Task UpsertAsync(Guid memoryId, string text, IReadOnlyList<float> vector, CancellationToken ct)
+        => Task.CompletedTask;
+
+    public Task<IReadOnlyList<PersonalAIAssistant.Memory.Core.DTOs.VectorSearchResult>> SearchAsync(
+        IReadOnlyList<float> vector, int limit, CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<PersonalAIAssistant.Memory.Core.DTOs.VectorSearchResult>>(
+            Array.Empty<PersonalAIAssistant.Memory.Core.DTOs.VectorSearchResult>());
+
+    public Task DeleteAsync(Guid memoryId, CancellationToken ct)
+        => Task.CompletedTask;
 }

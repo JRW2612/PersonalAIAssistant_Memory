@@ -1,8 +1,14 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\PersonalAIAssistant.Memory.Business\PersonalAIAssistant.Memory.Business.csproj" />
     <ProjectReference Include="..\PersonalAIAssistant.Memory.Infrastructure\PersonalAIAssistant.Memory.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
