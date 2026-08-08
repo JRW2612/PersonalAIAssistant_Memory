@@ -84,7 +84,9 @@ jobs:
           path: '**/coverage.cobertura.xml'
 
       - name: Send coverage to Codecov
-        if: ${{ secrets.CODECOV_TOKEN != '' }}
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        if: ${{ env.CODECOV_TOKEN != '' }}
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -104,7 +106,9 @@ jobs:
           path: artifacts
 
       - name: Publish NuGet packages
-        if: ${{ secrets.NUGET_API_KEY != '' && startsWith(github.ref, 'refs/tags/') }}
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        if: ${{ env.NUGET_API_KEY != '' && startsWith(github.ref, 'refs/tags/') }}
         run: |
           set -e
           for pkg in artifacts/*.nupkg; do
@@ -113,7 +117,9 @@ jobs:
           done
 
       - name: Publish to GitHub Packages
-        if: ${{ secrets.GITHUB_TOKEN != '' && startsWith(github.ref, 'refs/tags/') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: ${{ env.GITHUB_TOKEN != '' && startsWith(github.ref, 'refs/tags/') }}
         run: |
           set -e
           for pkg in artifacts/*.nupkg; do

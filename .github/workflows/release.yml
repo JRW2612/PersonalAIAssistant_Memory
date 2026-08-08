@@ -48,7 +48,9 @@ jobs:
           asset_content_type: application/zip
 
       - name: Publish to GitHub Packages
-        if: ${{ secrets.GITHUB_TOKEN != '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: ${{ env.GITHUB_TOKEN != '' }}
         run: |
           set -e
           for pkg in artifacts/*.nupkg; do
