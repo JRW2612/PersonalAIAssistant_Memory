@@ -133,6 +133,22 @@ namespace PersonalAIAssistant.Memory.Core.Domains
             Emit(evt);
         }
 
+        public void Archive(string reason, string userId)
+        {
+            CoreGuard.NotNullOrWhiteSpace(reason, nameof(reason));
+            if (Status == MemoryStatus.Deleted || Status == MemoryStatus.Archived) return;  // idempotent
+
+            var evt = new MemoryArchivedEvent
+            {
+                AggregateId = Id,
+                MemoryId = Id,
+                Reason = reason,
+                UserId = userId,
+                EventType = nameof(MemoryArchivedEvent)
+            };
+            Emit(evt);
+        }
+
         public void Delete(string reason, string userId)
         {
             CoreGuard.NotNullOrWhiteSpace(reason, nameof(reason));
@@ -235,6 +251,10 @@ namespace PersonalAIAssistant.Memory.Core.Domains
 
                 case MemoryIndexedEvent indexed:
                     EmbeddingId = indexed.EmbeddingId;
+                    break;
+
+                case MemoryArchivedEvent:
+                    Status = MemoryStatus.Archived;
                     break;
 
                 case MemoryDeletedEvent:

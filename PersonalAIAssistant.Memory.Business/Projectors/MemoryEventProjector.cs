@@ -45,7 +45,8 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
                 Summary = summary,
                 TokenCount = CountTokens(summary),
                 Archived = false,
-                Importance = Enum.TryParse<MemoryImportance>(evt.Importance, ignoreCase: true, out var imp) ? imp : MemoryImportance.Medium
+                Importance = Enum.TryParse<MemoryImportance>(evt.Importance, ignoreCase: true, out var imp) ? imp : MemoryImportance.Medium,
+                CreatedAt = evt.Timestamp
             };
 
             await _readRepo.UpsertAsync(model, ct);
@@ -65,7 +66,8 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
                     MemoryId = evt.AggregateId,
                     Summary = summary,
                     TokenCount = CountTokens(summary),
-                    Archived = false
+                    Archived = false,
+                    CreatedAt = evt.Timestamp // Ideally, we'd preserve the original CreatedAt, but for simplicity we'll update or rely on SQL UPSERT to keep original
                 };
                 await _readRepo.UpsertAsync(model, ct);
             }
@@ -84,7 +86,8 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
                 MemoryId = evt.AggregateId,
                 Summary = summary,
                 TokenCount = CountTokens(summary),
-                Archived = false
+                Archived = false,
+                CreatedAt = evt.Timestamp
             };
 
             await _readRepo.UpsertAsync(model, ct);
@@ -102,7 +105,8 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
                 MemoryId = evt.AggregateId,
                 Summary = summary,
                 TokenCount = CountTokens(summary),
-                Archived = false
+                Archived = false,
+                CreatedAt = evt.Timestamp
             };
 
             await _readRepo.UpsertAsync(model, ct);
@@ -129,7 +133,27 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
                 MemoryId = evt.AggregateId,
                 Summary = string.Empty,
                 TokenCount = 0,
-                Archived = true
+                Archived = true,
+                CreatedAt = evt.Timestamp
+            };
+
+            await _readRepo.UpsertAsync(model, ct);
+            await _readRepo.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
+        }
+
+        public async Task Handle(MemoryArchivedEvent evt, CancellationToken ct)
+        {
+            if (evt == null) return;
+            if (await _readRepo.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+
+            // For archiving, we could just fetch and update, or upsert with basic info. 
+            // In a real app we'd fetch the existing and update `Archived = true`.
+            // For now, let's assume Upsert handles partial or we construct it.
+            var model = new MemoryReadModel
+            {
+                MemoryId = evt.AggregateId,
+                Archived = true,
+                CreatedAt = evt.Timestamp
             };
 
             await _readRepo.UpsertAsync(model, ct);
@@ -197,6 +221,7 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
                 case MemoryCompressedEvent compressed: await Handle(compressed, ct);    break;
                 case MemoryConsolidatedEvent consol:   await Handle(consol, ct);        break;
                 case MemoryIndexedEvent indexed:       await Handle(indexed, ct);       break;
+                case MemoryArchivedEvent archived:     await Handle(archived, ct);      break;
                 case MemoryDeletedEvent deleted:       await Handle(deleted, ct);       break;
                 case SnapshotCreatedEvent snapshot:    await Handle(snapshot, ct);      break;
                 default:

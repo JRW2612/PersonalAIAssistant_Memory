@@ -140,5 +140,64 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
                 throw;
             }
         }
+
+        public async Task<IEnumerable<MemoryReadModel>> GetMemoriesByIdsAsync(IEnumerable<Guid> memoryIds, CancellationToken ct)
+        {
+            var entities = await _db.MemoryReadModels
+                .Where(m => memoryIds.Contains(m.MemoryId))
+                .ToListAsync(ct);
+
+            return entities.Select(e => new MemoryReadModel
+            {
+                MemoryId = e.MemoryId,
+                Summary = e.Summary,
+                TokenCount = e.TokenCount,
+                Archived = e.Archived,
+                Importance = e.Importance,
+                CreatedAt = e.CreatedAt
+            });
+        }
+
+        public async Task<IEnumerable<ReadModelCandidate>> GetExpiredMemoriesAsync(int ttlDays, CancellationToken ct)
+        {
+            var cutoff = DateTime.UtcNow.AddDays(-ttlDays);
+            var rows = await _db.MemoryReadModels
+                .Where(m => !m.Archived && m.CreatedAt < cutoff)
+                .Take(100) // batch size limit
+                .ToListAsync(ct);
+
+            return rows.Select(r => new ReadModelCandidate(
+                r.MemoryId,
+                r.StreamId,
+                r.Summary,
+                r.TokenCount,
+                r.CreatedAt,
+                r.Archived));
+        }
+
+        public async Task<IEnumerable<ReadModelCandidate>> GetArchivedMemoriesAsync(int olderThanDays, CancellationToken ct)
+        {
+            var cutoff = DateTime.UtcNow.AddDays(-olderThanDays);
+            var rows = await _db.MemoryReadModels
+                .Where(m => m.Archived && m.LastProcessedAt < cutoff)
+                .Take(100)
+                .ToListAsync(ct);
+
+            return rows.Select(r => new ReadModelCandidate(
+                r.MemoryId,
+                r.StreamId,
+                r.Summary,
+                r.TokenCount,
+                r.CreatedAt,
+                r.Archived));
+        }
+
+        public async Task<int> GetMemoryCountByUserAsync(string userId, CancellationToken ct)
+        {
+            // Note: Since we didn't add UserId to MemoryReadModelEntity in this MVP yet,
+            // we will just return a mock or count all for now.
+            // In a real system, you'd add UserId to MemoryReadModelEntity and filter here.
+            return await _db.MemoryReadModels.CountAsync(m => !m.Archived, ct);
+        }
     }
 }

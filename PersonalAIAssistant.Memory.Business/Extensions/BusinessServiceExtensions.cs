@@ -85,6 +85,7 @@ namespace PersonalAIAssistant.Memory.Business.Extensions
 
             services.AddHostedService<ConsolidationWorker>();
             services.AddHostedService<SnapshotWorker>();
+            services.AddHostedService<RetentionWorker>();
 
             return services;
         }

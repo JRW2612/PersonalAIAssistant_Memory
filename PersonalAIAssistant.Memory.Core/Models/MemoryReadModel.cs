@@ -1,4 +1,4 @@
-﻿using PersonalAIAssistant.Memory.Core.Domains.Enums;
+using PersonalAIAssistant.Memory.Core.Domains.Enums;
 
 namespace PersonalAIAssistant.Memory.Core.Models
 {
@@ -9,5 +9,6 @@ namespace PersonalAIAssistant.Memory.Core.Models
         public int TokenCount { get; set; }
         public bool Archived { get; set; }
         public MemoryImportance Importance { get; set; } // enum
+        public DateTime CreatedAt { get; set; }
     }
 }

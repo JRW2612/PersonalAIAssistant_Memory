@@ -23,6 +23,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Gemini
         private readonly GeminiOptions _opts;
         private readonly ResiliencePipelineProvider<string> _polly;
         private readonly ILogger<GeminiChatProvider> _logger;
+        private readonly IAiMetricsLogger _metrics;
 
         private static readonly JsonSerializerOptions JsonOpts = new()
         {
@@ -34,12 +35,14 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Gemini
             IHttpClientFactory httpFactory,
             IOptions<AiProviderOptions> opts,
             ResiliencePipelineProvider<string> polly,
-            ILogger<GeminiChatProvider> logger)
+            ILogger<GeminiChatProvider> logger,
+            IAiMetricsLogger metrics)
         {
             _http   = httpFactory.CreateClient("gemini");
             _opts   = opts.Value.Gemini;
             _polly  = polly;
             _logger = logger;
+            _metrics = metrics;
         }
 
         public async Task<string> GetResponseAsync(string prompt, CancellationToken ct)
@@ -64,8 +67,10 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Gemini
                 _logger.LogDebug("[Gemini] Sending request — model: {Model}, prompt length: {Len}",
                     model, prompt.Length);
 
+                var start = DateTimeOffset.UtcNow;
                 var response = await _http.PostAsJsonAsync(url, requestBody, JsonOpts, token);
                 response.EnsureSuccessStatusCode();
+                var latency = DateTimeOffset.UtcNow - start;
 
                 var body = await response.Content.ReadFromJsonAsync<GenerateResponse>(JsonOpts, token)
                     ?? throw new InvalidOperationException("[Gemini] Empty response body.");
@@ -73,7 +78,27 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Gemini
                 var text = body.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text
                     ?? throw new InvalidOperationException("[Gemini] No text in candidates.");
 
-                _logger.LogDebug("[Gemini] Response received — length: {Len}", text.Length);
+                var promptTokens = body.UsageMetadata?.PromptTokenCount ?? 0;
+                var completionTokens = body.UsageMetadata?.CandidatesTokenCount ?? 0;
+                var totalTokens = body.UsageMetadata?.TotalTokenCount ?? 0;
+
+                // Simple rate table for Gemini 1.5 Flash
+                var cost = (promptTokens * 0.000075 / 1000.0) + (completionTokens * 0.00030 / 1000.0);
+
+                _metrics.Record(new AiCallMetrics(
+                    Provider: ProviderName,
+                    Model: model,
+                    Operation: "chat", // Will be refined when IAIProvider gets operation context
+                    PromptTokens: promptTokens,
+                    CompletionTokens: completionTokens,
+                    TotalTokens: totalTokens,
+                    EstimatedCostUsd: cost,
+                    Latency: latency,
+                    WasCacheHit: false,
+                    WasFallback: false,
+                    UserId: null,
+                    Timestamp: DateTime.UtcNow
+                ));
 
                 return text;
             }, ct);
@@ -106,11 +131,19 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Gemini
         private sealed class GenerateResponse
         {
             public List<Candidate>? Candidates { get; set; }
+            public UsageMetadata? UsageMetadata { get; set; }
         }
 
         private sealed class Candidate
         {
             public Content? Content { get; set; }
+        }
+
+        private sealed class UsageMetadata
+        {
+            public int PromptTokenCount { get; set; }
+            public int CandidatesTokenCount { get; set; }
+            public int TotalTokenCount { get; set; }
         }
     }
 }

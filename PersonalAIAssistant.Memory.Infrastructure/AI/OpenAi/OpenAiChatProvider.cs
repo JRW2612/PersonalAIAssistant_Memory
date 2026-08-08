@@ -23,6 +23,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi
         private readonly OpenAiOptions _opts;
         private readonly ResiliencePipelineProvider<string> _polly;
         private readonly ILogger<OpenAiChatProvider> _logger;
+        private readonly IAiMetricsLogger _metrics;
 
         private static readonly JsonSerializerOptions JsonOpts = new()
         {
@@ -34,12 +35,14 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi
             IHttpClientFactory httpFactory,
             IOptions<AiProviderOptions> opts,
             ResiliencePipelineProvider<string> polly,
-            ILogger<OpenAiChatProvider> logger)
+            ILogger<OpenAiChatProvider> logger,
+            IAiMetricsLogger metrics)
         {
             _http   = httpFactory.CreateClient("openai");
             _opts   = opts.Value.OpenAi;
             _polly  = polly;
             _logger = logger;
+            _metrics = metrics;
         }
 
         public async Task<string> GetResponseAsync(string prompt, CancellationToken ct)
@@ -66,8 +69,10 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi
                 httpRequest.Headers.Authorization =
                     new AuthenticationHeaderValue("Bearer", _opts.ApiKey);
 
+                var start = DateTimeOffset.UtcNow;
                 var response = await _http.SendAsync(httpRequest, token);
                 response.EnsureSuccessStatusCode();
+                var latency = DateTimeOffset.UtcNow - start;
 
                 var body = await response.Content.ReadFromJsonAsync<ChatResponse>(JsonOpts, token)
                     ?? throw new InvalidOperationException("[OpenAI] Empty response body.");
@@ -75,8 +80,27 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi
                 var text = body.Choices?.FirstOrDefault()?.Message?.Content
                     ?? throw new InvalidOperationException("[OpenAI] No content in choices.");
 
-                _logger.LogDebug("[OpenAI] Response received — tokens used: {Tokens}",
-                    body.Usage?.TotalTokens);
+                var promptTokens = body.Usage?.PromptTokens ?? 0;
+                var completionTokens = body.Usage?.CompletionTokens ?? 0;
+                var totalTokens = body.Usage?.TotalTokens ?? 0;
+
+                // Simple rate table for GPT-4o-mini
+                var cost = (promptTokens * 0.00015 / 1000.0) + (completionTokens * 0.00060 / 1000.0);
+
+                _metrics.Record(new AiCallMetrics(
+                    Provider: ProviderName,
+                    Model: request.Model,
+                    Operation: "chat", // Will be refined when IAIProvider gets operation context
+                    PromptTokens: promptTokens,
+                    CompletionTokens: completionTokens,
+                    TotalTokens: totalTokens,
+                    EstimatedCostUsd: cost,
+                    Latency: latency,
+                    WasCacheHit: false,
+                    WasFallback: false,
+                    UserId: null,
+                    Timestamp: DateTime.UtcNow
+                ));
 
                 return text;
             }, ct);
@@ -112,6 +136,10 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi
 
         private sealed class UsageInfo
         {
+            [JsonPropertyName("prompt_tokens")]
+            public int PromptTokens { get; set; }
+            [JsonPropertyName("completion_tokens")]
+            public int CompletionTokens { get; set; }
             [JsonPropertyName("total_tokens")]
             public int TotalTokens { get; set; }
         }

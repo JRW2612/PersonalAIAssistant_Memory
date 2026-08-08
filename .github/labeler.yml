@@ -1,0 +1,11 @@
+# automatic labeler mapping by path
+"area: business":
+  - "PersonalAIAssistant.Memory.Business/**"
+"area: infra":
+  - "PersonalAIAssistant.Memory.Infrastructure/**"
+"area: tests":
+  - "**/Tests/**"
+"area: docs":
+  - "docs/**"
+"area: ci":
+  - ".github/**"

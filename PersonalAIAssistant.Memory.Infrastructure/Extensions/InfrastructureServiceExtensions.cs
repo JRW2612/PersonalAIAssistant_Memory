@@ -63,6 +63,9 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.Configure<OpenAiOptions>(configuration.GetSection(OpenAiOptions.SectionName));
             services.Configure<GeminiOptions>(configuration.GetSection(GeminiOptions.SectionName));
             services.Configure<TeamsOptions>(configuration.GetSection(TeamsOptions.SectionName));
+            
+            services.Configure<ChunkingOptions>(configuration.GetSection("Chunking"));
+            services.Configure<RetentionOptions>(configuration.GetSection(RetentionOptions.SectionName));
 
             // ── Named HttpClients ────────────────────────────────────────────
             services.AddHttpClient("openai", client =>
@@ -91,6 +94,11 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
 
             // Teams notification sender
             services.AddScoped<INotificationSender, TeamsWebhookSender>();
+
+            // ── New memory features (Chunking, Metrics, Retrieval) ───────────
+            services.AddSingleton<IAiMetricsLogger, AiMetricsLogger>();
+            services.AddSingleton<ITextChunker, TextChunker>();
+            services.AddScoped<IMemoryRetrievalService, MemoryRetrievalService>();
 
             return services;
         }

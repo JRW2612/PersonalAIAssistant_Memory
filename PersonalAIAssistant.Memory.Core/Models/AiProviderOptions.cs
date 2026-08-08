@@ -22,6 +22,7 @@ namespace PersonalAIAssistant.Memory.Core.Models
 
         public OpenAiOptions OpenAi { get; set; } = new();
         public GeminiOptions Gemini { get; set; } = new();
+        public ChunkingOptions Chunking { get; set; } = new();
     }
 
     // ─────────────────────────────────────────────
@@ -100,5 +101,12 @@ namespace PersonalAIAssistant.Memory.Core.Models
 
         /// <summary>Whether Teams notifications are enabled.</summary>
         public bool Enabled { get; set; } = true;
+    }
+
+    public sealed class ChunkingOptions
+    {
+        public bool Enabled { get; set; } = true;
+        public int MaxTokens { get; set; } = 512;
+        public int OverlapTokens { get; set; } = 64;
     }
 }

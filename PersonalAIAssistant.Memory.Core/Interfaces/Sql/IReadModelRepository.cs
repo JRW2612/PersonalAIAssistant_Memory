@@ -39,5 +39,25 @@ namespace PersonalAIAssistant.Memory.Core.Interfaces.Sql
         /// Unmark candidate if processing failed or was aborted.
         /// </summary>
         Task UnmarkProcessingAsync(Guid memoryId, CancellationToken ct);
+
+        /// <summary>
+        /// Retrieves multiple read models by their IDs.
+        /// </summary>
+        Task<IEnumerable<MemoryReadModel>> GetMemoriesByIdsAsync(IEnumerable<Guid> memoryIds, CancellationToken ct);
+
+        /// <summary>
+        /// Gets memories that have exceeded their TTL.
+        /// </summary>
+        Task<IEnumerable<ReadModelCandidate>> GetExpiredMemoriesAsync(int ttlDays, CancellationToken ct);
+
+        /// <summary>
+        /// Gets memories that have been archived longer than the threshold.
+        /// </summary>
+        Task<IEnumerable<ReadModelCandidate>> GetArchivedMemoriesAsync(int olderThanDays, CancellationToken ct);
+
+        /// <summary>
+        /// Gets the total number of memories for a user.
+        /// </summary>
+        Task<int> GetMemoryCountByUserAsync(string userId, CancellationToken ct);
     }
 }

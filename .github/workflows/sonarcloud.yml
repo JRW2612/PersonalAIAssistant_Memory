@@ -1,0 +1,51 @@
+name: SonarCloud Scan
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  sonarcloud:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore "PersonalAIAssistant.Memory.slnx"
+
+      - name: Build
+        run: dotnet build "PersonalAIAssistant.Memory.slnx" --configuration Release --no-restore
+
+      - name: Run SonarCloud Analysis
+        uses: SonarSource/sonarcloud-github-action@master
+        with:
+          # SonarCloud requires authentication via SONAR_TOKEN and organization/project keys which should be set as repository secrets.
+          # Set secrets.SONAR_TOKEN, secrets.SONAR_ORGANIZATION, secrets.SONAR_PROJECT_KEY in the repository settings.
+          args: >
+            -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
+            -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
+            # If this is a pull request, provide PR metadata so SonarCloud can decorate the PR and report Quality Gate status.
+            -Dsonar.pullrequest.key=${{ github.event.pull_request.number || '' }}
+            -Dsonar.pullrequest.branch=${{ github.head_ref || '' }}
+            -Dsonar.pullrequest.base=${{ github.base_ref || '' }}
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Wait for SonarCloud Quality Gate (informational)
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          echo "SonarCloud will decorate the pull request with analysis results and quality gate status if configured."
+          echo "Ensure SONAR_TOKEN, SONAR_ORGANIZATION and SONAR_PROJECT_KEY are configured in repository secrets."
+
+      - name: Upload coverage to SonarCloud (optional)
+        if: always()
+        run: |
+          echo "If you enable coverage export to SonarCloud, configure the paths and properties here."
