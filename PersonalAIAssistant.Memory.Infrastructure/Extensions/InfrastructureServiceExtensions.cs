@@ -11,8 +11,11 @@ using PersonalAIAssistant.Memory.Infrastructure.AI.Gemini;
 using PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi;
 using PersonalAIAssistant.Memory.Infrastructure.AI.Teams;
 using PersonalAIAssistant.Memory.Infrastructure.EF;
-using PersonalAIAssistant.Memory.Infrastructure.InMemory;
+using PersonalAIAssistant.Memory.Infrastructure.Events;
 using PersonalAIAssistant.Memory.Infrastructure.Mongo;
+using PersonalAIAssistant.Memory.Events;
+using MassTransit;
+using Qdrant.Client;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
 {
@@ -40,9 +43,12 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.AddSingleton<IEventStore, MongoEventStore>();
             services.AddSingleton<ISnapshotRepository, MongoSnapshotRepository>();
 
-            // Register Event Bus (InMemory implementation with scoped handler dispatch)
-            services.AddSingleton<IEventBus, InMemoryEventBus>();
+            services.AddSingleton<ISnapshotRepository, MongoSnapshotRepository>();
 
+            // Register Event Bus
+            // For MVP/Demo we fall back to InMemoryEventBus if MassTransit is not configured,
+            // but since we are going live, we configure MassTransit below.
+            
             return services;
         }
 
@@ -99,6 +105,40 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.AddSingleton<IAiMetricsLogger, AiMetricsLogger>();
             services.AddSingleton<ITextChunker, TextChunker>();
             services.AddScoped<IMemoryRetrievalService, MemoryRetrievalService>();
+
+            // ── Vector Database (Qdrant) ─────────────────────────────────────
+            services.Configure<QdrantOptions>(configuration.GetSection(QdrantOptions.SectionName));
+            services.AddSingleton(sp =>
+            {
+                var qdrantOpts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<QdrantOptions>>().Value;
+                return new QdrantClient(host: qdrantOpts.Host, port: qdrantOpts.Port, https: qdrantOpts.Https, apiKey: qdrantOpts.ApiKey);
+            });
+            services.AddScoped<IVectorMemoryRepository, QdrantVectorRepository>();
+
+            // ── Message Broker (MassTransit + RabbitMQ) ──────────────────────
+            services.AddMassTransit(x =>
+            {
+                x.AddConsumer<MemoryEventConsumer<MemoryAddedEvent>>();
+                x.AddConsumer<MemoryEventConsumer<MemoryCompressedEvent>>();
+                x.AddConsumer<MemoryEventConsumer<MemoryConsolidatedEvent>>();
+                x.AddConsumer<MemoryEventConsumer<MemoryIndexedEvent>>();
+                x.AddConsumer<MemoryEventConsumer<MemoryArchivedEvent>>();
+                x.AddConsumer<MemoryEventConsumer<MemoryDeletedEvent>>();
+                x.AddConsumer<MemoryEventConsumer<SnapshotCreatedEvent>>();
+
+                x.UsingRabbitMq((context, cfg) =>
+                {
+                    cfg.Host("localhost", "/", h =>
+                    {
+                        h.Username("guest");
+                        h.Password("guest");
+                    });
+
+                    cfg.ConfigureEndpoints(context);
+                });
+            });
+
+            services.AddScoped<IEventBus, RabbitMQEventBus>();
 
             return services;
         }

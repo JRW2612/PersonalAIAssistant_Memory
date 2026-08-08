@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  personal-ai-memory-api:
+    build:
+      context: .
+      dockerfile: PersonalAIAssistant.Memory.Demo/Dockerfile
+    ports:
+      - "5000:8080"
+    environment:
+      - Mongo__ConnectionString=mongodb://mongo:27017
+      - Sql__ConnectionString=Host=postgres;Database=memorydb;Username=postgres;Password=yourpassword
+      - Qdrant__Host=qdrant
+      - RabbitMQ__Host=rabbitmq
+    depends_on:
+      - mongo
+      - postgres
+      - qdrant
+      - rabbitmq
+    restart: on-failure
+
+  mongo:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=yourpassword
+      - POSTGRES_DB=memorydb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+volumes:
+  mongo_data:
+  postgres_data:
+  qdrant_data:
