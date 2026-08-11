@@ -72,24 +72,25 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             
             services.Configure<ChunkingOptions>(configuration.GetSection("Chunking"));
             services.Configure<RetentionOptions>(configuration.GetSection(RetentionOptions.SectionName));
+            services.Configure<EncryptionOptions>(configuration.GetSection(EncryptionOptions.SectionName));
 
-            // ── Named HttpClients ────────────────────────────────────────────
+            // ── Named HttpClients with Polly Resilience ──────────────────────
             services.AddHttpClient("openai", client =>
             {
                 client.BaseAddress = new Uri("https://api.openai.com/v1/");
                 client.Timeout     = TimeSpan.FromSeconds(60);
-            });
+            }).AddStandardResilienceHandler();
 
             services.AddHttpClient("gemini", client =>
             {
                 client.BaseAddress = new Uri("https://generativelanguage.googleapis.com/v1beta/");
                 client.Timeout     = TimeSpan.FromSeconds(60);
-            });
+            }).AddStandardResilienceHandler();
 
             services.AddHttpClient("teams", client =>
             {
                 client.Timeout = TimeSpan.FromSeconds(30);
-            });
+            }).AddStandardResilienceHandler();
 
             // ── Provider implementations ─────────────────────────────────────
             // All registered so IEnumerable<IAIProvider> resolves all of them;
@@ -105,6 +106,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.AddSingleton<IAiMetricsLogger, AiMetricsLogger>();
             services.AddSingleton<ITextChunker, TextChunker>();
             services.AddScoped<IMemoryRetrievalService, MemoryRetrievalService>();
+            services.AddSingleton<IEncryptionService, PersonalAIAssistant.Memory.Infrastructure.Security.AesEncryptionService>();
 
             // ── Vector Database (Qdrant) ─────────────────────────────────────
             services.Configure<QdrantOptions>(configuration.GetSection(QdrantOptions.SectionName));

@@ -27,28 +27,47 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
             _collectionName = options.Value.CollectionName;
         }
 
-        public async Task UpsertAsync(Guid memoryId, string embeddingId, IReadOnlyList<float> vector, CancellationToken ct)
+        public async Task UpsertAsync(Guid memoryId, string embeddingId, IReadOnlyList<float> vector, string? userId, CancellationToken ct)
         {
+            await EnsureCollectionExistsAsync(ct);
+
             var point = new PointStruct
             {
                 Id = new PointId { Uuid = memoryId.ToString() },
                 Vectors = vector.ToArray(),
                 Payload = {
-                    ["embeddingId"] = embeddingId
+                    ["embeddingId"] = embeddingId,
+                    ["userId"] = userId ?? string.Empty
                 }
             };
 
             await _client.UpsertAsync(_collectionName, new[] { point }, cancellationToken: ct);
         }
 
-        public async Task<IReadOnlyList<VectorSearchResult>> SearchAsync(IReadOnlyList<float> queryVector, int topK, CancellationToken ct)
+        public async Task<IReadOnlyList<VectorSearchResult>> SearchAsync(IReadOnlyList<float> queryVector, int topK, string? userId, CancellationToken ct)
         {
             try
             {
+                await EnsureCollectionExistsAsync(ct);
+
+                var filter = new Filter();
+                if (!string.IsNullOrEmpty(userId))
+                {
+                    filter.Must.Add(new Condition
+                    {
+                        Field = new FieldCondition
+                        {
+                            Key = "userId",
+                            Match = new Match { Text = userId }
+                        }
+                    });
+                }
+
 #pragma warning disable CS0618 // Type or member is obsolete
                 var searchResult = await _client.SearchAsync(
                     collectionName: _collectionName,
                     vector: queryVector.ToArray(),
+                    filter: filter,
                     limit: (ulong)topK,
                     cancellationToken: ct);
 #pragma warning restore CS0618 // Type or member is obsolete
@@ -68,10 +87,46 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
 
         public async Task DeleteAsync(Guid memoryId, CancellationToken ct)
         {
+            await EnsureCollectionExistsAsync(ct);
+
             await _client.DeleteAsync(
                 _collectionName,
                 new PointId[] { new PointId { Uuid = memoryId.ToString() } },
                 cancellationToken: ct);
+        }
+
+        private async Task EnsureCollectionExistsAsync(CancellationToken ct)
+        {
+            try
+            {
+                if (await _client.CollectionExistsAsync(_collectionName, ct))
+                {
+                    return;
+                }
+
+                // 1536 is standard for OpenAI / Gemini text embeddings
+                await _client.CreateCollectionAsync(
+                    collectionName: _collectionName,
+                    vectorsConfig: new VectorParams
+                    {
+                        Size = 1536,
+                        Distance = Distance.Cosine
+                    },
+                    quantizationConfig: new QuantizationConfig
+                    {
+                        Scalar = new ScalarQuantization
+                        {
+                            Type = QuantizationType.Int8
+                        }
+                    },
+                    cancellationToken: ct);
+
+                _logger.LogInformation("Successfully initialized Qdrant collection {CollectionName} with Scalar Quantization.", _collectionName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking/creating Qdrant collection {CollectionName}.", _collectionName);
+            }
         }
     }
 }

@@ -57,7 +57,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
 
             // 2. Vector search with overfetch
             int overfetchK = request.TopK * 3;
-            var searchResults = await _vectorRepo.SearchAsync(embedResult.Vector, overfetchK, ct);
+            var searchResults = await _vectorRepo.SearchAsync(embedResult.Vector, overfetchK, request.UserId, ct);
 
             if (!searchResults.Any())
             {

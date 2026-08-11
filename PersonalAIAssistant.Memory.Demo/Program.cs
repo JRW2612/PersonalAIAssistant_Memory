@@ -108,11 +108,11 @@ class MockEmbeddingService : PersonalAIAssistant.Memory.Core.Interfaces.Others.I
 
 class MockVectorRepo : PersonalAIAssistant.Memory.Core.Interfaces.Others.IVectorMemoryRepository
 {
-    public Task UpsertAsync(Guid memoryId, string text, IReadOnlyList<float> vector, CancellationToken ct)
+    public Task UpsertAsync(Guid memoryId, string text, IReadOnlyList<float> vector, string? userId, CancellationToken ct)
         => Task.CompletedTask;
 
     public Task<IReadOnlyList<PersonalAIAssistant.Memory.Core.DTOs.VectorSearchResult>> SearchAsync(
-        IReadOnlyList<float> vector, int limit, CancellationToken ct)
+        IReadOnlyList<float> vector, int limit, string? userId, CancellationToken ct)
         => Task.FromResult<IReadOnlyList<PersonalAIAssistant.Memory.Core.DTOs.VectorSearchResult>>(
             Array.Empty<PersonalAIAssistant.Memory.Core.DTOs.VectorSearchResult>());
 

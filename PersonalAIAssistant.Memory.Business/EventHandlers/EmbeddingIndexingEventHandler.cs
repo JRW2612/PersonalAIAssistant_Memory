@@ -1,4 +1,4 @@
-﻿using MediatR;
+using MediatR;
 using Microsoft.Extensions.Logging;
 using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Core.Interfaces.Others;
@@ -47,8 +47,8 @@ namespace PersonalAIAssistant.Memory.Business.EventHandlers
             {
                 // Generate embedding
                 var embedding = await _embeddingService.GenerateEmbeddingAsync(memoryAddedEvent.RawText, ct);
-                // Store embedding in vector repository
-                await _vectorRepo.UpsertAsync(memoryAddedEvent.AggregateId, embedding.EmbeddingId, embedding.Vector, ct);
+                // Store embedding in vector repository with tenant separation
+                await _vectorRepo.UpsertAsync(memoryAddedEvent.AggregateId, embedding.EmbeddingId, embedding.Vector, memoryAddedEvent.UserId, ct);
                 await _mediator.Send(new MemoryIndexedCommand(memoryAddedEvent.AggregateId, embedding.EmbeddingId, embedding.Provider), ct);
 
             }

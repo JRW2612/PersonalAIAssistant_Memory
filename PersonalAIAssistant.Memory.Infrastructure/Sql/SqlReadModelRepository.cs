@@ -10,14 +10,30 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
     public class SqlReadModelRepository : IReadModelRepository, ITransactionalReadModelRepository
     {
         private readonly ReadModelDbContext _db;
+        private readonly IEncryptionService _encryptionService;
+        private readonly Microsoft.Extensions.Options.IOptions<PersonalAIAssistant.Memory.Core.Models.EncryptionOptions> _encryptOptions;
 
-        public SqlReadModelRepository(ReadModelDbContext db)
+        public SqlReadModelRepository(
+            ReadModelDbContext db,
+            IEncryptionService encryptionService,
+            Microsoft.Extensions.Options.IOptions<PersonalAIAssistant.Memory.Core.Models.EncryptionOptions> encryptOptions)
         {
             _db = db;
+            _encryptionService = encryptionService;
+            _encryptOptions = encryptOptions;
         }
 
         public async Task UpsertAsync(MemoryReadModel model, CancellationToken cancellationToken)
         {
+            var summary = model.Summary;
+            var isEncrypted = false;
+            if (_encryptOptions.Value.Enabled && !string.IsNullOrEmpty(summary))
+            {
+                var userKey = _encryptOptions.Value.SystemKey + "_" + (model.UserId ?? "default");
+                summary = _encryptionService.Encrypt(summary, userKey);
+                isEncrypted = true;
+            }
+
             var existing = await _db.MemoryReadModels.FindAsync(new object[] { model.MemoryId }, cancellationToken);
             if (existing == null)
             {
@@ -25,22 +41,26 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
                 {
                     MemoryId = model.MemoryId,
                     StreamId = $"memory-{model.MemoryId}",
-                    Summary = model.Summary,
+                    UserId = model.UserId,
+                    Summary = summary,
                     TokenCount = model.TokenCount,
                     Importance = model.Importance,
-                    CreatedAt = DateTime.UtcNow,
+                    CreatedAt = model.CreatedAt != default ? model.CreatedAt : DateTime.UtcNow,
                     Archived = model.Archived,
-                    LastProcessedAt = DateTime.UtcNow
+                    LastProcessedAt = DateTime.UtcNow,
+                    IsEncrypted = isEncrypted
                 };
                 _db.MemoryReadModels.Add(entity);
             }
             else
             {
-                existing.Summary = model.Summary;
+                if (!string.IsNullOrEmpty(model.UserId)) existing.UserId = model.UserId;
+                existing.Summary = summary;
                 existing.TokenCount = model.TokenCount;
                 existing.Importance = model.Importance;
                 existing.Archived = model.Archived;
                 existing.LastProcessedAt = DateTime.UtcNow;
+                existing.IsEncrypted = isEncrypted;
                 _db.MemoryReadModels.Update(existing);
             }
 
@@ -79,7 +99,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
             return rows.Select(r => new ReadModelCandidate(
                 r.MemoryId,
                 r.StreamId,
-                r.Summary,
+                DecryptSummary(r.Summary, r.IsEncrypted, r.UserId),
                 r.TokenCount,
                 r.CreatedAt,
                 r.Archived));
@@ -150,7 +170,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
             return entities.Select(e => new MemoryReadModel
             {
                 MemoryId = e.MemoryId,
-                Summary = e.Summary,
+                UserId = e.UserId,
+                Summary = DecryptSummary(e.Summary, e.IsEncrypted, e.UserId),
                 TokenCount = e.TokenCount,
                 Archived = e.Archived,
                 Importance = e.Importance,
@@ -169,7 +190,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
             return rows.Select(r => new ReadModelCandidate(
                 r.MemoryId,
                 r.StreamId,
-                r.Summary,
+                DecryptSummary(r.Summary, r.IsEncrypted, r.UserId),
                 r.TokenCount,
                 r.CreatedAt,
                 r.Archived));
@@ -186,7 +207,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
             return rows.Select(r => new ReadModelCandidate(
                 r.MemoryId,
                 r.StreamId,
-                r.Summary,
+                DecryptSummary(r.Summary, r.IsEncrypted, r.UserId),
                 r.TokenCount,
                 r.CreatedAt,
                 r.Archived));
@@ -194,10 +215,26 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
 
         public async Task<int> GetMemoryCountByUserAsync(string userId, CancellationToken ct)
         {
-            // Note: Since we didn't add UserId to MemoryReadModelEntity in this MVP yet,
-            // we will just return a mock or count all for now.
-            // In a real system, you'd add UserId to MemoryReadModelEntity and filter here.
-            return await _db.MemoryReadModels.CountAsync(m => !m.Archived, ct);
+            if (string.IsNullOrWhiteSpace(userId) || userId == "default")
+            {
+                return await _db.MemoryReadModels.CountAsync(m => !m.Archived, ct);
+            }
+            return await _db.MemoryReadModels.CountAsync(m => !m.Archived && m.UserId == userId, ct);
+        }
+
+        private string DecryptSummary(string summary, bool isEncrypted, string userId)
+        {
+            if (!isEncrypted || string.IsNullOrEmpty(summary)) return summary;
+            try
+            {
+                var userKey = _encryptOptions.Value.SystemKey + "_" + (userId ?? "default");
+                return _encryptionService.Decrypt(summary, userKey);
+            }
+            catch
+            {
+                // Fallback to ciphertext or empty string if decryption fails (e.g. key rotation/mismatch)
+                return summary;
+            }
         }
     }
 }

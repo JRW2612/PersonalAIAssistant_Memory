@@ -43,6 +43,8 @@ namespace PersonalAIAssistant.Memory.Business.Handlers
             var parentCorrelationId = request.CorrelationId ?? Guid.NewGuid().ToString();
             Guid firstAggregateId = Guid.Empty;
 
+            var allEvents = new List<PersonalAIAssistant.Memory.Events.MemoryEvent>();
+
             foreach (var chunk in chunks)
             {
                 var aggregate = new MemoryAggregate();
@@ -68,7 +70,7 @@ namespace PersonalAIAssistant.Memory.Business.Handlers
                 var streamId = $"memory-{aggregate.Id.Value}";
                 
                 await _eventStore.AppendEventsAsync(streamId, uncommittedEvents, 0, cancellationToken);
-                await _eventBus.PublishAsync(uncommittedEvents, cancellationToken);
+                allEvents.AddRange(uncommittedEvents);
                 
                 aggregate.ClearUncommittedEvents();
                 
@@ -76,6 +78,11 @@ namespace PersonalAIAssistant.Memory.Business.Handlers
                 {
                     firstAggregateId = aggregate.Id.Value;
                 }
+            }
+
+            if (allEvents.Any())
+            {
+                await _eventBus.PublishAsync(allEvents, cancellationToken);
             }
 
             return firstAggregateId == Guid.Empty ? Guid.NewGuid() : firstAggregateId;

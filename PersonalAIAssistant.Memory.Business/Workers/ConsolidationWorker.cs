@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.DependencyInjection;
 using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Exceptions;
 using PersonalAIAssistant.Memory.Core.Interfaces.Others;
@@ -27,28 +28,19 @@ namespace PersonalAIAssistant.Memory.Business.Workers
     public class ConsolidationWorker : BackgroundService
     {
         private readonly ILogger<ConsolidationWorker> _logger;
-        private readonly IReadModelRepository _readRepo;
-        private readonly IEventStore _eventStore;
-        private readonly IEventBus _eventBus;
-        private readonly ICompressionService _compressionService;
+        private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _scopeFactory;
         private readonly ResiliencePipelineProvider<string> _resilienceProvider;
         private readonly ConsolidationWorkerOptions _opts;
         private readonly SemaphoreSlim _llmSemaphore;
 
         public ConsolidationWorker(
             ILogger<ConsolidationWorker> logger,
-            IReadModelRepository readRepo,
-            IEventStore eventStore,
-            IEventBus eventBus,
-            ICompressionService compressionService,
+            Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopeFactory,
             ResiliencePipelineProvider<string> resilienceProvider,
             IOptions<ConsolidationWorkerOptions> opts)
         {
             _logger = logger;
-            _readRepo = readRepo;
-            _eventStore = eventStore;
-            _eventBus = eventBus;
-            _compressionService = compressionService;
+            _scopeFactory = scopeFactory;
             _resilienceProvider = resilienceProvider;
             _opts = opts.Value;
             _llmSemaphore = new SemaphoreSlim(_opts.MaxConcurrentLLM);
@@ -63,7 +55,9 @@ namespace PersonalAIAssistant.Memory.Business.Workers
             {
                 try
                 {
-                    var candidates = await _readRepo.GetConsolidationCandidatesAsync(_opts.BatchSize, stoppingToken);
+                    using var scope = _scopeFactory.CreateScope();
+                    var readRepo = scope.ServiceProvider.GetRequiredService<IReadModelRepository>();
+                    var candidates = await readRepo.GetConsolidationCandidatesAsync(_opts.BatchSize, stoppingToken);
 
                     if (!candidates.Any())
                     {
@@ -90,8 +84,14 @@ namespace PersonalAIAssistant.Memory.Business.Workers
 
         private async Task ProcessCandidateAsync(ReadModelCandidate candidate, CancellationToken ct)
         {
+            using var scope = _scopeFactory.CreateScope();
+            var readRepo = scope.ServiceProvider.GetRequiredService<IReadModelRepository>();
+            var eventStore = scope.ServiceProvider.GetRequiredService<IEventStore>();
+            var eventBus = scope.ServiceProvider.GetRequiredService<IEventBus>();
+            var compressionService = scope.ServiceProvider.GetRequiredService<ICompressionService>();
+
             // Idempotency: skip if another worker instance already claimed this item.
-            if (!await _readRepo.TryMarkProcessingAsync(candidate.MemoryId, ct))
+            if (!await readRepo.TryMarkProcessingAsync(candidate.MemoryId, ct))
                 return;
 
             // Acquire semaphore AFTER claiming the lock so we don't block the lock path.
@@ -103,11 +103,11 @@ namespace PersonalAIAssistant.Memory.Business.Workers
 
                 // 1. Compress/summarize text via LLM (protected by Circuit Breaker & Retry)
                 var compressed = await aiPipeline.ExecuteAsync(async token => 
-                    await _compressionService.CompressAsync(candidate.Text, token), ct);
+                    await compressionService.CompressAsync(candidate.Text, token), ct);
 
                 // 2. Load aggregate history and apply domain logic
                 var history = await workerPipeline.ExecuteAsync(async token => 
-                    await _eventStore.GetEventsAsync(candidate.StreamId, token), ct);
+                    await eventStore.GetEventsAsync(candidate.StreamId, token), ct);
                 
                 var aggregate = new MemoryAggregate();
                 aggregate.LoadFromHistory(history);
@@ -120,9 +120,9 @@ namespace PersonalAIAssistant.Memory.Business.Workers
 
                 await workerPipeline.ExecuteAsync(async token => 
                 {
-                    await _eventStore.AppendEventsAsync(candidate.StreamId, newEvents, expectedVersion, token);
-                    await _eventBus.PublishAsync(newEvents, token);
-                    await _readRepo.MarkProcessedAsync(candidate.MemoryId, token);
+                    await eventStore.AppendEventsAsync(candidate.StreamId, newEvents, expectedVersion, token);
+                    await eventBus.PublishAsync(newEvents, token);
+                    await readRepo.MarkProcessedAsync(candidate.MemoryId, token);
                 }, ct);
 
                 aggregate.ClearUncommittedEvents();
@@ -130,12 +130,12 @@ namespace PersonalAIAssistant.Memory.Business.Workers
             catch (ConcurrencyException)
             {
                 _logger.LogWarning("Concurrency conflict while consolidating {MemoryId} — will retry next cycle.", candidate.MemoryId);
-                await _readRepo.UnmarkProcessingAsync(candidate.MemoryId, ct);
+                await readRepo.UnmarkProcessingAsync(candidate.MemoryId, ct);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error consolidating {MemoryId}.", candidate.MemoryId);
-                await _readRepo.UnmarkProcessingAsync(candidate.MemoryId, ct);
+                await readRepo.UnmarkProcessingAsync(candidate.MemoryId, ct);
             }
             finally
             {

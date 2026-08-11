@@ -3,6 +3,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using PersonalAIAssistant.Memory.Core.Exceptions;
 using PersonalAIAssistant.Memory.Core.Interfaces.Mongo;
+using PersonalAIAssistant.Memory.Core.Interfaces.Others;
 using PersonalAIAssistant.Memory.Events;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
@@ -10,10 +11,19 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
     public class MongoEventStore : IEventStore
     {
         private readonly IMongoCollection<EventDocument> _collection;
+        private readonly IEncryptionService _encryptionService;
+        private readonly Microsoft.Extensions.Options.IOptions<PersonalAIAssistant.Memory.Core.Models.EncryptionOptions> _encryptOptions;
 
-        public MongoEventStore(IMongoDatabase database, string collectionName = "events")
+        public MongoEventStore(
+            IMongoDatabase database, 
+            IEncryptionService encryptionService,
+            Microsoft.Extensions.Options.IOptions<PersonalAIAssistant.Memory.Core.Models.EncryptionOptions> encryptOptions,
+            string collectionName = "events")
         {
             _collection = database.GetCollection<EventDocument>(collectionName);
+            _encryptionService = encryptionService;
+            _encryptOptions = encryptOptions;
+
             // Unique composite index on (StreamId, Version) for fast reads and concurrency enforcement.
             var indexKeys = Builders<EventDocument>.IndexKeys
                 .Ascending(d => d.StreamId)
@@ -46,7 +56,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
                 version++;
                 evt.Version = version;
                 evt.Timestamp = DateTime.UtcNow;
-                docs.Add(EventDocument.FromMemoryEvent(streamId, evt));
+                docs.Add(EventDocument.FromMemoryEvent(streamId, evt, _encryptionService, _encryptOptions.Value));
             }
 
             await _collection.InsertManyAsync(docs, cancellationToken: ct);
@@ -56,7 +66,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
         {
             var filter = Builders<EventDocument>.Filter.Eq(d => d.StreamId, streamId);
             var docs = await _collection.Find(filter).SortBy(d => d.Version).ToListAsync(ct);
-            return docs.Select(d => d.ToMemoryEvent()).ToList();
+            return docs.Select(d => d.ToMemoryEvent(_encryptionService, _encryptOptions.Value)).ToList();
         }
 
         public async Task<IReadOnlyList<MemoryEvent>> GetEventsFromVersionAsync(string streamId, int fromVersion, CancellationToken ct)
@@ -66,7 +76,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
                 Builders<EventDocument>.Filter.Gt(d => d.Version, fromVersion)
             );
             var docs = await _collection.Find(filter).SortBy(d => d.Version).ToListAsync(ct);
-            return docs.Select(d => d.ToMemoryEvent()).ToList();
+            return docs.Select(d => d.ToMemoryEvent(_encryptionService, _encryptOptions.Value)).ToList();
         }
 
         public async Task<int> GetCurrentVersionAsync(string streamId, CancellationToken ct)
@@ -111,6 +121,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
             public string EventType { get; set; } = string.Empty;
             public string Payload { get; set; } = string.Empty;
             public string AggregateId { get; set; } = string.Empty;
+            public string UserId { get; set; } = string.Empty;
+            public bool IsEncrypted { get; set; }
 
             // Build the event-type map once from the Events assembly to avoid magic strings.
             private static readonly Dictionary<string, Type> EventTypeMap = typeof(MemoryEvent).Assembly
@@ -118,8 +130,18 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
                 .Where(t => t.IsSubclassOf(typeof(MemoryEvent)) && !t.IsAbstract)
                 .ToDictionary(t => t.Name, t => t);
 
-            public static EventDocument FromMemoryEvent(string streamId, MemoryEvent evt)
+            public static EventDocument FromMemoryEvent(string streamId, MemoryEvent evt, IEncryptionService encryptService, PersonalAIAssistant.Memory.Core.Models.EncryptionOptions opts)
             {
+                var payloadStr = System.Text.Json.JsonSerializer.Serialize(evt, evt.GetType());
+                var isEncrypted = false;
+
+                if (opts.Enabled)
+                {
+                    var userKey = opts.SystemKey + "_" + (evt.UserId ?? "default");
+                    payloadStr = encryptService.Encrypt(payloadStr, userKey);
+                    isEncrypted = true;
+                }
+
                 return new EventDocument
                 {
                     StreamId = streamId,
@@ -127,19 +149,28 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
                     Version = evt.Version,
                     Timestamp = evt.Timestamp,
                     EventType = evt.GetType().Name,
-                    Payload = System.Text.Json.JsonSerializer.Serialize(evt, evt.GetType()),
-                    AggregateId = evt.AggregateId.ToString()
+                    Payload = payloadStr,
+                    AggregateId = evt.AggregateId.ToString(),
+                    UserId = evt.UserId ?? string.Empty,
+                    IsEncrypted = isEncrypted
                 };
             }
 
-            public MemoryEvent ToMemoryEvent()
+            public MemoryEvent ToMemoryEvent(IEncryptionService encryptService, PersonalAIAssistant.Memory.Core.Models.EncryptionOptions opts)
             {
                 var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
                 if (!EventTypeMap.TryGetValue(EventType, out var specificType))
                     specificType = typeof(MemoryEvent);
 
-                var evt = (MemoryEvent?)System.Text.Json.JsonSerializer.Deserialize(Payload, specificType, options)
+                var payloadStr = Payload;
+                if (IsEncrypted)
+                {
+                    var userKey = opts.SystemKey + "_" + (UserId ?? "default");
+                    payloadStr = encryptService.Decrypt(payloadStr, userKey);
+                }
+
+                var evt = (MemoryEvent?)System.Text.Json.JsonSerializer.Deserialize(payloadStr, specificType, options)
                     ?? throw new InvalidOperationException($"Failed to deserialize event payload for type '{EventType}'.");
 
                 // Restore metadata tracked by the document wrapper

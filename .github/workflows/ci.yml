@@ -34,16 +34,16 @@ jobs:
         run: dotnet --info
 
       - name: Restore
-        run: dotnet restore "PersonalAIAssistant.Memory.slnx"
+        run: dotnet restore "PersonalAIAssistant.Memory.sln"
 
       - name: Build
-        run: dotnet build "PersonalAIAssistant.Memory.slnx" --configuration Release --no-restore
+        run: dotnet build "PersonalAIAssistant.Memory.sln" --configuration Release --no-restore
 
       - name: Test (with code coverage)
         run: |
           set -e
           # Run tests, produce TRX and XPlat coverage (coverage.cobertura.xml)
-          dotnet test "PersonalAIAssistant.Memory.slnx" --configuration Release --no-build --logger "trx;LogFileName=test_results.trx" --collect:"XPlat Code Coverage"
+          dotnet test "PersonalAIAssistant.Memory.sln" --configuration Release --no-build --logger "trx;LogFileName=test_results.trx" --collect:"XPlat Code Coverage"
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
@@ -97,7 +97,7 @@ jobs:
       - name: Pack projects (create NuGet packages)
         run: |
           set -e
-          dotnet pack "PersonalAIAssistant.Memory.slnx" -c Release -o ./artifacts --no-build || true
+          dotnet pack "PersonalAIAssistant.Memory.sln" -c Release -o ./artifacts --no-build || true
 
       - name: Upload packages/artifacts
         uses: actions/upload-artifact@v4

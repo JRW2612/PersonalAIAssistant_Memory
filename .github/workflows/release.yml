@@ -18,15 +18,15 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Restore
-        run: dotnet restore "PersonalAIAssistant.Memory.slnx"
+        run: dotnet restore "PersonalAIAssistant.Memory.sln"
 
       - name: Build
-        run: dotnet build "PersonalAIAssistant.Memory.slnx" --configuration Release --no-restore
+        run: dotnet build "PersonalAIAssistant.Memory.sln" --configuration Release --no-restore
 
       - name: Pack
         run: |
           set -e
-          dotnet pack "PersonalAIAssistant.Memory.slnx" -c Release -o ./artifacts --no-build
+          dotnet pack "PersonalAIAssistant.Memory.sln" -c Release -o ./artifacts --no-build
 
       - name: Create GitHub Release
         id: create_release

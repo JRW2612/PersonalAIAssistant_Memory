@@ -42,6 +42,7 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
             var model = new MemoryReadModel
             {
                 MemoryId = evt.AggregateId,
+                UserId = evt.UserId ?? string.Empty,
                 Summary = summary,
                 TokenCount = CountTokens(summary),
                 Archived = false,
@@ -64,10 +65,11 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
                 var model = new MemoryReadModel
                 {
                     MemoryId = evt.AggregateId,
+                    UserId = evt.UserId ?? string.Empty,
                     Summary = summary,
                     TokenCount = CountTokens(summary),
                     Archived = false,
-                    CreatedAt = evt.Timestamp // Ideally, we'd preserve the original CreatedAt, but for simplicity we'll update or rely on SQL UPSERT to keep original
+                    CreatedAt = evt.Timestamp
                 };
                 await _readRepo.UpsertAsync(model, ct);
             }
@@ -84,6 +86,7 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
             var model = new MemoryReadModel
             {
                 MemoryId = evt.AggregateId,
+                UserId = evt.UserId ?? string.Empty,
                 Summary = summary,
                 TokenCount = CountTokens(summary),
                 Archived = false,
@@ -103,6 +106,7 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
             var model = new MemoryReadModel
             {
                 MemoryId = evt.AggregateId,
+                UserId = evt.UserId ?? string.Empty,
                 Summary = summary,
                 TokenCount = CountTokens(summary),
                 Archived = false,
@@ -131,6 +135,7 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
             var model = new MemoryReadModel
             {
                 MemoryId = evt.AggregateId,
+                UserId = evt.UserId ?? string.Empty,
                 Summary = string.Empty,
                 TokenCount = 0,
                 Archived = true,
@@ -152,6 +157,7 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
             var model = new MemoryReadModel
             {
                 MemoryId = evt.AggregateId,
+                UserId = evt.UserId ?? string.Empty,
                 Archived = true,
                 CreatedAt = evt.Timestamp
             };
