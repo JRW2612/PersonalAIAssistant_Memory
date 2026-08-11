@@ -63,7 +63,7 @@ _ = Task.Run(async () =>
     Console.WriteLine("\n[DEMO] Dispatching an AddMemoryCommand...");
     var addCommand = new AddMemoryCommand(
         RawText: "I learned how to implement Event Sourcing with MongoDB today.",
-        Source: "ConsoleDemo",
+        Source: MemorySource.User.ToString(),
         Importance: MemoryImportance.High,
         Tags: new List<string> { "demo", "architecture" },
         UserId: "user-123"
