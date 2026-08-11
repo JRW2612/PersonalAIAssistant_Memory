@@ -2,7 +2,7 @@ name: SonarCloud Scan
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main,Feature_MemoryManagement_Jayant ]
   pull_request:
     branches: [ main ]
 

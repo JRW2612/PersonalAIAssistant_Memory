@@ -1,11 +1,20 @@
-# automatic labeler mapping by path
+# automatic labeler mapping by path (actions/labeler v5 syntax)
 "area: business":
-  - "PersonalAIAssistant.Memory.Business/**"
+  - changed-files:
+      - any-glob-to-any-file: "PersonalAIAssistant.Memory.Business/**"
+
 "area: infra":
-  - "PersonalAIAssistant.Memory.Infrastructure/**"
+  - changed-files:
+      - any-glob-to-any-file: "PersonalAIAssistant.Memory.Infrastructure/**"
+
 "area: tests":
-  - "**/Tests/**"
+  - changed-files:
+      - any-glob-to-any-file: "**/Tests/**"
+
 "area: docs":
-  - "docs/**"
+  - changed-files:
+      - any-glob-to-any-file: "docs/**"
+
 "area: ci":
-  - ".github/**"
+  - changed-files:
+      - any-glob-to-any-file: ".github/**"
