@@ -1,4 +1,4 @@
-﻿namespace PersonalAIAssistant.Memory.Core.Domains.Enums
+namespace PersonalAIAssistant.Memory.Core.Domains.Enums
 {
     public enum MemorySource
     {
@@ -8,6 +8,7 @@
         Note,
         System,
         User,
-        Other
+        Other,
+        Api
     }
 }

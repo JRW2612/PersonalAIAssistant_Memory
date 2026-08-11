@@ -99,6 +99,10 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.AddScoped<IAIProvider, GeminiChatProvider>();
             services.AddScoped<IAIProviderFactory, AIProviderFactory>();
 
+            // Embeddings and LLM Compression Services
+            services.AddScoped<IEmbeddingService, PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi.OpenAiEmbeddingService>();
+            services.AddScoped<ICompressionService, PersonalAIAssistant.Memory.Infrastructure.AI.LlmCompressionService>();
+
             // Teams notification sender
             services.AddScoped<INotificationSender, TeamsWebhookSender>();
 
@@ -130,14 +134,25 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
 
                 x.UsingRabbitMq((context, cfg) =>
                 {
-                    cfg.Host("localhost", "/", h =>
+                    var rabbitHost = configuration["MessageBroker:Host"] ?? "localhost";
+                    var rabbitUser = configuration["MessageBroker:Username"] ?? "guest";
+                    var rabbitPass = configuration["MessageBroker:Password"] ?? "guest";
+
+                    cfg.Host(rabbitHost, "/", h =>
                     {
-                        h.Username("guest");
-                        h.Password("guest");
+                        h.Username(rabbitUser);
+                        h.Password(rabbitPass);
                     });
 
                     cfg.ConfigureEndpoints(context);
                 });
+            });
+
+            services.Configure<MassTransitHostOptions>(options =>
+            {
+                options.WaitUntilStarted = false;
+                options.StartTimeout = TimeSpan.FromSeconds(2);
+                options.StopTimeout = TimeSpan.FromSeconds(2);
             });
 
             services.AddScoped<IEventBus, RabbitMQEventBus>();

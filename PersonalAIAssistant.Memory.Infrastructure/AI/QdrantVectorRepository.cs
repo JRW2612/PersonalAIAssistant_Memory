@@ -29,19 +29,26 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
 
         public async Task UpsertAsync(Guid memoryId, string embeddingId, IReadOnlyList<float> vector, string? userId, CancellationToken ct)
         {
-            await EnsureCollectionExistsAsync(ct);
-
-            var point = new PointStruct
+            try
             {
-                Id = new PointId { Uuid = memoryId.ToString() },
-                Vectors = vector.ToArray(),
-                Payload = {
-                    ["embeddingId"] = embeddingId,
-                    ["userId"] = userId ?? string.Empty
-                }
-            };
+                await EnsureCollectionExistsAsync(ct);
 
-            await _client.UpsertAsync(_collectionName, new[] { point }, cancellationToken: ct);
+                var point = new PointStruct
+                {
+                    Id = new PointId { Uuid = memoryId.ToString() },
+                    Vectors = vector.ToArray(),
+                    Payload = {
+                        ["embeddingId"] = embeddingId,
+                        ["userId"] = userId ?? string.Empty
+                    }
+                };
+
+                await _client.UpsertAsync(_collectionName, new[] { point }, cancellationToken: ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to upsert vector into Qdrant collection '{CollectionName}' (Qdrant server may be offline).", _collectionName);
+            }
         }
 
         public async Task<IReadOnlyList<VectorSearchResult>> SearchAsync(IReadOnlyList<float> queryVector, int topK, string? userId, CancellationToken ct)
@@ -80,19 +87,31 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
             }
             catch (RpcException ex) when (ex.StatusCode == StatusCode.NotFound)
             {
-                _logger.LogWarning("Qdrant collection {CollectionName} not found.", _collectionName);
+                _logger.LogWarning("Qdrant collection '{CollectionName}' not found.", _collectionName);
+                return Array.Empty<VectorSearchResult>();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to execute vector search in Qdrant collection '{CollectionName}' (Qdrant server may be offline). Returning empty search results.", _collectionName);
                 return Array.Empty<VectorSearchResult>();
             }
         }
 
         public async Task DeleteAsync(Guid memoryId, CancellationToken ct)
         {
-            await EnsureCollectionExistsAsync(ct);
+            try
+            {
+                await EnsureCollectionExistsAsync(ct);
 
-            await _client.DeleteAsync(
-                _collectionName,
-                new PointId[] { new PointId { Uuid = memoryId.ToString() } },
-                cancellationToken: ct);
+                await _client.DeleteAsync(
+                    _collectionName,
+                    new PointId[] { new PointId { Uuid = memoryId.ToString() } },
+                    cancellationToken: ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to delete vector from Qdrant collection '{CollectionName}' (Qdrant server may be offline).", _collectionName);
+            }
         }
 
         private async Task EnsureCollectionExistsAsync(CancellationToken ct)

@@ -14,8 +14,8 @@ namespace PersonalAIAssistant.Memory.Business.Validators
 
             RuleFor(x => x.Source)
                 .NotEmpty().WithMessage("Source must not be empty.")
-                .Must(s => Enum.TryParse<MemorySource>(s, ignoreCase: true, out var src) && src != MemorySource.Unknown)
-                .WithMessage("Source must be a known value: Chat, Email, Note, System, User, or Other.");
+                .Must(s => Enum.TryParse<MemorySource>(s, ignoreCase: true, out var src) && src != MemorySource.Unknown && Enum.IsDefined(src))
+                .WithMessage("Source must be a known value: Chat, Email, Note, System, User, Other, or Api.");
 
             RuleFor(x => x.UserId)
                 .NotEmpty().WithMessage("UserId must not be empty.");

@@ -146,6 +146,13 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
 
         public async Task ExecuteInTransactionAsync(Func<CancellationToken, Task> operation, CancellationToken ct)
         {
+            if (_db.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+            {
+                await operation(ct);
+                await _db.SaveChangesAsync(ct);
+                return;
+            }
+
             // Use a transaction so all Upserts and MarkProcessed happen atomically
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
             try

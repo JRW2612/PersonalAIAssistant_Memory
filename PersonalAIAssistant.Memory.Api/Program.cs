@@ -71,17 +71,36 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 
-// 4. Register Infrastructure Services (EF Core PostgreSQL, MongoDB, Qdrant, MassTransit/RabbitMQ)
+// 4. Register Infrastructure Services (EF Core PostgreSQL/InMemory, MongoDB/InMemory, Qdrant, MassTransit/RabbitMQ)
+var useInMemory = builder.Configuration.GetValue<bool>("UseInMemoryStore", true);
 var postgresConn = builder.Configuration.GetConnectionString("PostgresReadModel") 
     ?? "Host=localhost;Database=PersonalAiMemoryReadDb;Username=postgres;Password=postgres";
 var mongoConn = builder.Configuration.GetConnectionString("MongoEventStore") 
     ?? "mongodb://localhost:27017";
 
 builder.Services.AddMemoryInfrastructureServices(
-    configureDbContext: options => options.UseNpgsql(postgresConn),
+    configureDbContext: options =>
+    {
+        if (useInMemory)
+        {
+            options.UseInMemoryDatabase("PersonalAiMemoryReadDb")
+                   .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning));
+        }
+        else
+        {
+            options.UseNpgsql(postgresConn);
+        }
+    },
     mongoConnectionString: mongoConn,
     mongoDatabaseName: "PersonalAiMemoryDb"
 );
+
+if (useInMemory)
+{
+    builder.Services.AddSingleton<PersonalAIAssistant.Memory.Core.Interfaces.Mongo.IEventStore, PersonalAIAssistant.Memory.Infrastructure.Mongo.InMemoryEventStore>();
+    builder.Services.AddSingleton<PersonalAIAssistant.Memory.Core.Interfaces.Others.ISnapshotRepository, PersonalAIAssistant.Memory.Infrastructure.Mongo.InMemorySnapshotRepository>();
+    builder.Services.AddScoped<PersonalAIAssistant.Memory.Core.Interfaces.Others.IEventBus, PersonalAIAssistant.Memory.Infrastructure.InMemory.InMemoryEventBus>();
+}
 
 builder.Services.AddAiProviders(builder.Configuration);
 
@@ -94,6 +113,8 @@ builder.Services.AddMemoryBusinessServices(
 var app = builder.Build();
 
 // 6. Middleware Pipeline
+app.UseMiddleware<ExceptionHandlingMiddleware>();
+
 if (app.Environment.IsDevelopment() || app.Environment.IsStaging())
 {
     app.UseSwagger();
@@ -108,6 +129,7 @@ app.UseAuthorization();
 
 app.UseObservabilityEndpoints();
 
+app.MapGet("/", () => Results.Redirect("/swagger"));
 app.MapControllers();
 
 app.Run();

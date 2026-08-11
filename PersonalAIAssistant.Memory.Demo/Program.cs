@@ -44,6 +44,7 @@ builder.Services.AddMemoryBusinessServices(
 //    Replace with real implementations when deploying.
 builder.Services.AddSingleton<PersonalAIAssistant.Memory.Core.Interfaces.Mongo.IEventStore, PersonalAIAssistant.Memory.Infrastructure.Mongo.InMemoryEventStore>();
 builder.Services.AddSingleton<PersonalAIAssistant.Memory.Core.Interfaces.Others.ISnapshotRepository, PersonalAIAssistant.Memory.Infrastructure.Mongo.InMemorySnapshotRepository>();
+builder.Services.AddScoped<PersonalAIAssistant.Memory.Core.Interfaces.Others.IEventBus, PersonalAIAssistant.Memory.Infrastructure.InMemory.InMemoryEventBus>();
 builder.Services.AddSingleton<PersonalAIAssistant.Memory.Core.Interfaces.Others.ICompressionService, MockCompressionService>();
 builder.Services.AddSingleton<PersonalAIAssistant.Memory.Core.Interfaces.Others.IEmbeddingService, MockEmbeddingService>();
 builder.Services.AddSingleton<PersonalAIAssistant.Memory.Core.Interfaces.Others.IVectorMemoryRepository, MockVectorRepo>();

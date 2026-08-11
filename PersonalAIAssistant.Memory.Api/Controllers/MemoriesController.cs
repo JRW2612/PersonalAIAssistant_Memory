@@ -39,7 +39,7 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
             var userId = GetCurrentUserId();
             var command = new AddMemoryCommand(
                 RawText: dto.RawText,
-                Source: dto.Source ?? "API",
+                Source: string.IsNullOrWhiteSpace(dto.Source) ? MemorySource.Api.ToString() : dto.Source,
                 Importance: dto.Importance,
                 Tags: dto.Tags ?? new List<string>(),
                 UserId: userId,
