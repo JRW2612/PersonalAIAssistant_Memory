@@ -40,8 +40,10 @@ builder.Services.AddMemoryBusinessServices(
     }
 );
 
-// 4. Register Mock Services for Demo
+// 4. Register Mock & In-Memory Services for Standalone Demo
 //    Replace with real implementations when deploying.
+builder.Services.AddSingleton<PersonalAIAssistant.Memory.Core.Interfaces.Mongo.IEventStore, PersonalAIAssistant.Memory.Infrastructure.Mongo.InMemoryEventStore>();
+builder.Services.AddSingleton<PersonalAIAssistant.Memory.Core.Interfaces.Others.ISnapshotRepository, PersonalAIAssistant.Memory.Infrastructure.Mongo.InMemorySnapshotRepository>();
 builder.Services.AddSingleton<PersonalAIAssistant.Memory.Core.Interfaces.Others.ICompressionService, MockCompressionService>();
 builder.Services.AddSingleton<PersonalAIAssistant.Memory.Core.Interfaces.Others.IEmbeddingService, MockEmbeddingService>();
 builder.Services.AddSingleton<PersonalAIAssistant.Memory.Core.Interfaces.Others.IVectorMemoryRepository, MockVectorRepo>();

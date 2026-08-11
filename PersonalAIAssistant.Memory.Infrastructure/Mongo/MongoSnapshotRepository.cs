@@ -27,10 +27,18 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
             _eventStore = eventStore;
 
             // Composite index: StreamId + Version for efficient latest-snapshot queries.
-            var indexKeys = Builders<SnapshotDocument>.IndexKeys
-                .Ascending(d => d.StreamId)
-                .Descending(d => d.Version);
-            _collection.Indexes.CreateOne(new CreateIndexModel<SnapshotDocument>(indexKeys));
+            try
+            {
+                var indexKeys = Builders<SnapshotDocument>.IndexKeys
+                    .Ascending(d => d.StreamId)
+                    .Descending(d => d.Version);
+                _collection.Indexes.CreateOne(new CreateIndexModel<SnapshotDocument>(indexKeys));
+            }
+            catch (Exception ex)
+            {
+                // Non-blocking fallback: Log or ignore on startup if MongoDB connection is delayed or offline
+                System.Diagnostics.Debug.WriteLine($"[MongoSnapshotRepository] Warning: Could not create index on startup: {ex.Message}");
+            }
         }
 
         /// <summary>

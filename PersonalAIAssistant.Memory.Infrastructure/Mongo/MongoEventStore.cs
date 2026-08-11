@@ -25,11 +25,19 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
             _encryptOptions = encryptOptions;
 
             // Unique composite index on (StreamId, Version) for fast reads and concurrency enforcement.
-            var indexKeys = Builders<EventDocument>.IndexKeys
-                .Ascending(d => d.StreamId)
-                .Ascending(d => d.Version);
-            _collection.Indexes.CreateOne(
-                new CreateIndexModel<EventDocument>(indexKeys, new CreateIndexOptions { Unique = true }));
+            try
+            {
+                var indexKeys = Builders<EventDocument>.IndexKeys
+                    .Ascending(d => d.StreamId)
+                    .Ascending(d => d.Version);
+                _collection.Indexes.CreateOne(
+                    new CreateIndexModel<EventDocument>(indexKeys, new CreateIndexOptions { Unique = true }));
+            }
+            catch (Exception ex)
+            {
+                // Non-blocking fallback: Log or ignore on startup if MongoDB connection is delayed or offline
+                System.Diagnostics.Debug.WriteLine($"[MongoEventStore] Warning: Could not create index on startup: {ex.Message}");
+            }
         }
 
         public async Task AppendEventAsync(string streamId, MemoryEvent memoryEvent, int expectedVersion, CancellationToken ct)
