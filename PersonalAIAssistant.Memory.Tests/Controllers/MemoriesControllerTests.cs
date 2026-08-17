@@ -77,9 +77,8 @@ namespace PersonalAIAssistant.Memory.Tests.Controllers
         {
             // Arrange
             var fusedPrompt = new FusedMemoryPrompt(
-                Query: "architectural decisions",
-                ContextBlock: "Context...",
-                RetrievedMemories: new List<MemoryReadModel>()
+                SystemContext: "Context block...",
+                Sources: new List<RetrievedMemory>()
             );
 
             _mediatorMock
@@ -104,10 +103,11 @@ namespace PersonalAIAssistant.Memory.Tests.Controllers
             var memoryId = Guid.NewGuid();
             var memoryModel = new MemoryReadModel
             {
-                Id = memoryId,
+                MemoryId = memoryId,
                 UserId = "test-user-123",
-                RawText = "Found memory",
-                Status = MemoryStatus.Active.ToString()
+                Summary = "Found memory",
+                Importance = MemoryImportance.High,
+                CreatedAt = DateTime.UtcNow
             };
 
             _readRepoMock
@@ -170,7 +170,7 @@ namespace PersonalAIAssistant.Memory.Tests.Controllers
                     c.MemoryId == memoryId &&
                     c.UserId == "test-user-123" &&
                     c.Reason == "User requested deletion"), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(memoryId);
+                .ReturnsAsync(Unit.Value);
 
             // Act
             var result = await _controller.DeleteMemory(memoryId, null, CancellationToken.None);
