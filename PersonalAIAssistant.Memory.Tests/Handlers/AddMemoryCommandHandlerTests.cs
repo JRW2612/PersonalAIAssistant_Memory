@@ -73,5 +73,41 @@ namespace PersonalAIAssistant.Memory.Tests.Handlers
                 It.IsAny<CancellationToken>()
             ), Times.Once);
         }
+
+        [Fact]
+        public async Task Handle_Should_Map_Custom_Source_String_To_System_With_Tag()
+        {
+            // Arrange
+            var handler = new AddMemoryCommandHandler(
+                _eventStoreMock.Object,
+                _eventBusMock.Object,
+                _chunkerMock.Object,
+                _optionsMock.Object
+            );
+
+            var command = new AddMemoryCommand(
+                RawText: "Authentication failed",
+                Source: "AuthenticationService",
+                Importance: MemoryImportance.Medium,
+                Tags: new List<string> { "security" },
+                UserId: "user-123",
+                CorrelationId: "corr-101"
+            );
+
+            // Act
+            var resultId = await handler.Handle(command, CancellationToken.None);
+
+            // Assert
+            resultId.Should().NotBeEmpty();
+            _eventStoreMock.Verify(s => s.AppendEventsAsync(
+                It.Is<string>(st => st.StartsWith("memory-")),
+                It.Is<IReadOnlyList<MemoryEvent>>(evs => 
+                    evs.Count == 1 && 
+                    ((MemoryAddedEvent)evs[0]).Source == MemorySource.System.ToString() &&
+                    ((MemoryAddedEvent)evs[0]).Tags.Contains("source:AuthenticationService")),
+                0,
+                It.IsAny<CancellationToken>()
+            ), Times.Once);
+        }
     }
 }

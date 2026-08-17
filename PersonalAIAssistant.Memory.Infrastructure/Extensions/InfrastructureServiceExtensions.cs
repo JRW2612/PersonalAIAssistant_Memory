@@ -119,43 +119,54 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
                 var qdrantOpts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<QdrantOptions>>().Value;
                 return new QdrantClient(host: qdrantOpts.Host, port: qdrantOpts.Port, https: qdrantOpts.Https, apiKey: qdrantOpts.ApiKey);
             });
-            services.AddScoped<IVectorMemoryRepository, QdrantVectorRepository>();
+            var useInMemory = configuration.GetValue<bool>("UseInMemoryStore", false);
+            if (useInMemory)
+            {
+                services.AddSingleton<IVectorMemoryRepository, PersonalAIAssistant.Memory.Infrastructure.InMemory.InMemoryVectorMemoryRepository>();
+            }
+            else
+            {
+                services.AddScoped<IVectorMemoryRepository, QdrantVectorRepository>();
+            }
 
             // ── Message Broker (MassTransit + RabbitMQ) ──────────────────────
-            services.AddMassTransit(x =>
+            if (!useInMemory)
             {
-                x.AddConsumer<MemoryEventConsumer<MemoryAddedEvent>>();
-                x.AddConsumer<MemoryEventConsumer<MemoryCompressedEvent>>();
-                x.AddConsumer<MemoryEventConsumer<MemoryConsolidatedEvent>>();
-                x.AddConsumer<MemoryEventConsumer<MemoryIndexedEvent>>();
-                x.AddConsumer<MemoryEventConsumer<MemoryArchivedEvent>>();
-                x.AddConsumer<MemoryEventConsumer<MemoryDeletedEvent>>();
-                x.AddConsumer<MemoryEventConsumer<SnapshotCreatedEvent>>();
-
-                x.UsingRabbitMq((context, cfg) =>
+                services.AddMassTransit(x =>
                 {
-                    var rabbitHost = configuration["MessageBroker:Host"] ?? "localhost";
-                    var rabbitUser = configuration["MessageBroker:Username"] ?? "guest";
-                    var rabbitPass = configuration["MessageBroker:Password"] ?? "guest";
+                    x.AddConsumer<MemoryEventConsumer<MemoryAddedEvent>>();
+                    x.AddConsumer<MemoryEventConsumer<MemoryCompressedEvent>>();
+                    x.AddConsumer<MemoryEventConsumer<MemoryConsolidatedEvent>>();
+                    x.AddConsumer<MemoryEventConsumer<MemoryIndexedEvent>>();
+                    x.AddConsumer<MemoryEventConsumer<MemoryArchivedEvent>>();
+                    x.AddConsumer<MemoryEventConsumer<MemoryDeletedEvent>>();
+                    x.AddConsumer<MemoryEventConsumer<SnapshotCreatedEvent>>();
 
-                    cfg.Host(rabbitHost, "/", h =>
+                    x.UsingRabbitMq((context, cfg) =>
                     {
-                        h.Username(rabbitUser);
-                        h.Password(rabbitPass);
+                        var rabbitHost = configuration["MessageBroker:Host"] ?? "localhost";
+                        var rabbitUser = configuration["MessageBroker:Username"] ?? "guest";
+                        var rabbitPass = configuration["MessageBroker:Password"] ?? "guest";
+
+                        cfg.Host(rabbitHost, "/", h =>
+                        {
+                            h.Username(rabbitUser);
+                            h.Password(rabbitPass);
+                        });
+
+                        cfg.ConfigureEndpoints(context);
                     });
-
-                    cfg.ConfigureEndpoints(context);
                 });
-            });
 
-            services.Configure<MassTransitHostOptions>(options =>
-            {
-                options.WaitUntilStarted = false;
-                options.StartTimeout = TimeSpan.FromSeconds(2);
-                options.StopTimeout = TimeSpan.FromSeconds(2);
-            });
+                services.Configure<MassTransitHostOptions>(options =>
+                {
+                    options.WaitUntilStarted = false;
+                    options.StartTimeout = TimeSpan.FromSeconds(2);
+                    options.StopTimeout = TimeSpan.FromSeconds(2);
+                });
 
-            services.AddScoped<IEventBus, RabbitMQEventBus>();
+                services.AddScoped<IEventBus, RabbitMQEventBus>();
+            }
 
             return services;
         }

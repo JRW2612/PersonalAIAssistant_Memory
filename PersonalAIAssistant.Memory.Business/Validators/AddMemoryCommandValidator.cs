@@ -13,9 +13,7 @@ namespace PersonalAIAssistant.Memory.Business.Validators
                 .MaximumLength(10_000).WithMessage("Memory text must not exceed 10,000 characters.");
 
             RuleFor(x => x.Source)
-                .NotEmpty().WithMessage("Source must not be empty.")
-                .Must(s => Enum.TryParse<MemorySource>(s, ignoreCase: true, out var src) && src != MemorySource.Unknown && Enum.IsDefined(src))
-                .WithMessage("Source must be a known value: Chat, Email, Note, System, User, Other, or Api.");
+                .NotEmpty().WithMessage("Source must not be empty.");
 
             RuleFor(x => x.UserId)
                 .NotEmpty().WithMessage("UserId must not be empty.");

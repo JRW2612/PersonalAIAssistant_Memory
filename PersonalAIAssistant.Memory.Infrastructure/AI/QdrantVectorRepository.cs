@@ -31,7 +31,10 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
         {
             try
             {
-                await EnsureCollectionExistsAsync(ct);
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cts.CancelAfter(TimeSpan.FromSeconds(2));
+
+                await EnsureCollectionExistsAsync(cts.Token);
 
                 var point = new PointStruct
                 {
@@ -43,7 +46,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
                     }
                 };
 
-                await _client.UpsertAsync(_collectionName, new[] { point }, cancellationToken: ct);
+                await _client.UpsertAsync(_collectionName, new[] { point }, cancellationToken: cts.Token);
             }
             catch (Exception ex)
             {
@@ -55,7 +58,10 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
         {
             try
             {
-                await EnsureCollectionExistsAsync(ct);
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cts.CancelAfter(TimeSpan.FromSeconds(2));
+
+                await EnsureCollectionExistsAsync(cts.Token);
 
                 var filter = new Filter();
                 if (!string.IsNullOrEmpty(userId))
@@ -76,7 +82,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
                     vector: queryVector.ToArray(),
                     filter: filter,
                     limit: (ulong)topK,
-                    cancellationToken: ct);
+                    cancellationToken: cts.Token);
 #pragma warning restore CS0618 // Type or member is obsolete
 
                 return searchResult.Select(h => new VectorSearchResult(
@@ -101,12 +107,15 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
         {
             try
             {
-                await EnsureCollectionExistsAsync(ct);
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cts.CancelAfter(TimeSpan.FromSeconds(2));
+
+                await EnsureCollectionExistsAsync(cts.Token);
 
                 await _client.DeleteAsync(
                     _collectionName,
                     new PointId[] { new PointId { Uuid = memoryId.ToString() } },
-                    cancellationToken: ct);
+                    cancellationToken: cts.Token);
             }
             catch (Exception ex)
             {
@@ -144,7 +153,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error checking/creating Qdrant collection {CollectionName}.", _collectionName);
+                _logger.LogWarning(ex, "Error checking/creating Qdrant collection {CollectionName} (Qdrant server may be offline).", _collectionName);
             }
         }
     }

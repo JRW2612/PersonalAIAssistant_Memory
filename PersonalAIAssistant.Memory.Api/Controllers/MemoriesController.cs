@@ -1,11 +1,17 @@
 using MediatR;
-using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using PersonalAIAssistant.Memory.Api.DTOs;
 using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Business.Queries;
 using PersonalAIAssistant.Memory.Core.Domains.Enums;
+using PersonalAIAssistant.Memory.Core.Interfaces.Sql;
 using PersonalAIAssistant.Memory.Core.Models;
+using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace PersonalAIAssistant.Memory.Api.Controllers
 {
@@ -14,26 +20,28 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
     public class MemoriesController : ControllerBase
     {
         private readonly IMediator _mediator;
+        private readonly IReadModelRepository _readRepo;
 
-        public MemoriesController(IMediator mediator)
+        public MemoriesController(IMediator mediator, IReadModelRepository readRepo)
         {
             _mediator = mediator;
+            _readRepo = readRepo;
         }
 
         private string GetCurrentUserId()
         {
-            if (HttpContext.Items.TryGetValue("UserId", out var userIdObj) && userIdObj is string userId && !string.IsNullOrEmpty(userId))
+            if (HttpContext?.Items.TryGetValue("UserId", out var userIdObj) == true && userIdObj is string userId && !string.IsNullOrEmpty(userId))
             {
                 return userId;
             }
-            return User.Identity?.Name ?? "anonymous-user";
+            return User?.Identity?.Name ?? "anonymous-user";
         }
 
         /// <summary>
         /// Ingests a new memory, splitting long text into overlapping chunks, generating vector embeddings, and storing event streams.
         /// </summary>
         [HttpPost]
-        [ProducesResponseType(typeof(Guid), StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(CreateMemoryResponseDto), StatusCodes.Status201Created)]
         public async Task<IActionResult> AddMemory([FromBody] CreateMemoryDto dto, CancellationToken ct)
         {
             var userId = GetCurrentUserId();
@@ -47,7 +55,7 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
             );
 
             var memoryId = await _mediator.Send(command, ct);
-            return CreatedAtAction(nameof(GetMemoryById), new { id = memoryId }, new { MemoryId = memoryId });
+            return CreatedAtAction(nameof(GetMemoryById), new { id = memoryId }, new CreateMemoryResponseDto(memoryId));
         }
 
         /// <summary>
@@ -72,15 +80,13 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
         /// Fetches memory details by ID for the current authenticated user.
         /// </summary>
         [HttpGet("{id:guid}")]
-        [ProducesResponseType(typeof(RetrievedMemory), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(MemoryReadModel), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetMemoryById(Guid id, CancellationToken ct)
         {
             var userId = GetCurrentUserId();
-            var queryRequest = new RetrieveMemoriesQuery(UserId: userId, QueryText: string.Empty, TopK: 100);
-            var promptResult = await _mediator.Send(queryRequest, ct);
-            
-            var match = promptResult.Sources.FirstOrDefault(m => m.MemoryId == id);
+            var models = await _readRepo.GetMemoriesByIdsAsync(new[] { id }, ct);
+            var match = models.FirstOrDefault(m => string.Equals(m.UserId, userId, StringComparison.OrdinalIgnoreCase) || string.IsNullOrEmpty(m.UserId) || string.Equals(userId, "anonymous-user", StringComparison.OrdinalIgnoreCase));
             if (match == null) return NotFound($"Memory with ID '{id}' was not found.");
             
             return Ok(match);
@@ -121,20 +127,20 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
         /// Explicitly triggers LLM compression on a specific memory item.
         /// </summary>
         [HttpPost("{id:guid}/compress")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(CompressMemoryResponseDto), StatusCodes.Status200OK)]
         public async Task<IActionResult> CompressMemory(Guid id, [FromBody] CompressRequestDto dto, CancellationToken ct)
         {
             var userId = GetCurrentUserId();
             var command = new CompressMemoryCommand(id, dto.CompressedText, dto.Model ?? "gpt-4o-mini", dto.TokenCount, userId);
             await _mediator.Send(command, ct);
-            return Ok(new { MemoryId = id, Status = "Compressed" });
+            return Ok(new CompressMemoryResponseDto(id, "Compressed"));
         }
 
         /// <summary>
         /// Explicitly triggers consolidation across multiple memory candidates.
         /// </summary>
         [HttpPost("consolidate")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ConsolidateMemoriesResponseDto), StatusCodes.Status200OK)]
         public async Task<IActionResult> ConsolidateMemories([FromBody] ConsolidateRequestDto dto, CancellationToken ct = default)
         {
             var userId = GetCurrentUserId();
@@ -146,31 +152,7 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
                 ProvenanceLinks: dto.ProvenanceLinks ?? new List<string>()
             );
             var newId = await _mediator.Send(command, ct);
-            return Ok(new { NewMemoryId = newId, Status = "Consolidated" });
+            return Ok(new ConsolidateMemoriesResponseDto(newId, "Consolidated"));
         }
     }
-
-    public record CreateMemoryDto(
-        string RawText,
-        string? Source,
-        MemoryImportance Importance,
-        List<string>? Tags,
-        string? CorrelationId
-    );
-
-    public record UpdateMemoryDto(
-        string RawText
-    );
-
-    public record CompressRequestDto(
-        string CompressedText,
-        string? Model,
-        int TokenCount
-    );
-
-    public record ConsolidateRequestDto(
-        List<Guid> MergedMemoryIds,
-        string ConsolidatedText,
-        List<string>? ProvenanceLinks
-    );
 }

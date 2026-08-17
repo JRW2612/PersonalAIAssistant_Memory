@@ -26,9 +26,9 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi
 
         public async Task<EmbeddingResult> GenerateEmbeddingAsync(string text, CancellationToken ct)
         {
-            if (string.IsNullOrWhiteSpace(_options.ApiKey) || _options.ApiKey == "sk-placeholder")
+            if (string.IsNullOrWhiteSpace(_options.ApiKey) || _options.ApiKey.Contains("placeholder", StringComparison.OrdinalIgnoreCase))
             {
-                _logger.LogWarning("OpenAI API key not configured. Returning deterministic dummy embedding vector for local testing.");
+                _logger.LogWarning("OpenAI API key not configured or using placeholder. Returning deterministic dummy embedding vector for local testing.");
                 return GenerateDummyEmbedding(text);
             }
 

@@ -2,10 +2,9 @@ using MediatR;
 using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Domains.Enums;
-using PersonalAIAssistant.Memory.Core.Domains.ValueObjects;
-using PersonalAIAssistant.Memory.Core.Exceptions;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
 using PersonalAIAssistant.Memory.Core.Interfaces.Mongo;
+using PersonalAIAssistant.Memory.Core.Interfaces.Others;
+using PersonalAIAssistant.Memory.Events;
 
 namespace PersonalAIAssistant.Memory.Business.Handlers
 {
@@ -17,8 +16,8 @@ namespace PersonalAIAssistant.Memory.Business.Handlers
         private readonly Microsoft.Extensions.Options.IOptions<PersonalAIAssistant.Memory.Core.Models.AiProviderOptions> _options;
 
         public AddMemoryCommandHandler(
-            IEventStore eventStore, 
-            IEventBus eventBus, 
+            IEventStore eventStore,
+            IEventBus eventBus,
             ITextChunker chunker,
             Microsoft.Extensions.Options.IOptions<PersonalAIAssistant.Memory.Core.Models.AiProviderOptions> options)
         {
@@ -30,26 +29,45 @@ namespace PersonalAIAssistant.Memory.Business.Handlers
 
         public async Task<Guid> Handle(AddMemoryCommand request, CancellationToken cancellationToken)
         {
-            if (!Enum.TryParse<MemorySource>(request.Source, ignoreCase: true, out var source) || !Enum.IsDefined(source))
-                throw new DomainException($"Unsupported memory source: '{request.Source}'.");
+            MemorySource source;
+            string? customSourceTag = null;
+
+            if (Enum.TryParse<MemorySource>(request.Source, ignoreCase: true, out var parsedSource)
+                && Enum.IsDefined(parsedSource)
+                && parsedSource != MemorySource.Unknown)
+            {
+                source = parsedSource;
+            }
+            else
+            {
+                source = MemorySource.System;
+                if (!string.IsNullOrWhiteSpace(request.Source))
+                {
+                    customSourceTag = $"source:{request.Source.Trim()}";
+                }
+            }
 
             var opts = _options.Value.Chunking;
             var chunkOptions = new ChunkOptions(opts.MaxTokens, opts.OverlapTokens);
-            
-            var chunks = opts.Enabled 
-                ? _chunker.Chunk(request.RawText, chunkOptions) 
+
+            var chunks = opts.Enabled
+                ? _chunker.Chunk(request.RawText, chunkOptions)
                 : new[] { new TextChunk(request.RawText, 0, request.RawText.Length) };
 
             var parentCorrelationId = request.CorrelationId ?? Guid.NewGuid().ToString();
             Guid firstAggregateId = Guid.Empty;
 
-            var allEvents = new List<PersonalAIAssistant.Memory.Events.MemoryEvent>();
+            var allEvents = new List<MemoryEvent>();
 
             foreach (var chunk in chunks)
             {
                 var aggregate = new MemoryAggregate();
-                
+
                 var chunkTags = request.Tags?.ToList() ?? new List<string>();
+                if (customSourceTag != null && !chunkTags.Contains(customSourceTag, StringComparer.OrdinalIgnoreCase))
+                {
+                    chunkTags.Add(customSourceTag);
+                }
                 if (chunks.Count > 1)
                 {
                     chunkTags.Add($"chunk:{chunk.Index}");
@@ -68,12 +86,12 @@ namespace PersonalAIAssistant.Memory.Business.Handlers
                 if (!uncommittedEvents.Any()) continue;
 
                 var streamId = $"memory-{aggregate.Id.Value}";
-                
+
                 await _eventStore.AppendEventsAsync(streamId, uncommittedEvents, 0, cancellationToken);
                 allEvents.AddRange(uncommittedEvents);
-                
+
                 aggregate.ClearUncommittedEvents();
-                
+
                 if (firstAggregateId == Guid.Empty)
                 {
                     firstAggregateId = aggregate.Id.Value;

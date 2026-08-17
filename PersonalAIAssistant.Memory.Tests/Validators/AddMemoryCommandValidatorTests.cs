@@ -21,6 +21,7 @@ namespace PersonalAIAssistant.Memory.Tests.Validators
         [InlineData("Api")]
         [InlineData("chat")] // Case insensitive check
         [InlineData("USER")]
+        [InlineData("AuthenticationService")] // Custom service source string
         public void Validate_ValidMemorySource_ShouldNotHaveValidationError(string source)
         {
             var command = new AddMemoryCommand(
@@ -38,11 +39,9 @@ namespace PersonalAIAssistant.Memory.Tests.Validators
         }
 
         [Theory]
-        [InlineData("InvalidSource")]
-        [InlineData("Unknown")]
-        [InlineData("999")]
-        [InlineData("-1")]
-        public void Validate_InvalidMemorySource_ShouldHaveValidationError(string source)
+        [InlineData("")]
+        [InlineData(null)]
+        public void Validate_EmptyMemorySource_ShouldHaveValidationError(string? source)
         {
             var command = new AddMemoryCommand(
                 RawText: "Valid memory text",
@@ -57,7 +56,7 @@ namespace PersonalAIAssistant.Memory.Tests.Validators
 
             result.IsValid.Should().BeFalse();
             result.Errors.Should().ContainSingle(e => e.PropertyName == "Source")
-                .Which.ErrorMessage.Should().Contain("Source must be a known value");
+                .Which.ErrorMessage.Should().Contain("Source must not be empty");
         }
 
         [Fact]

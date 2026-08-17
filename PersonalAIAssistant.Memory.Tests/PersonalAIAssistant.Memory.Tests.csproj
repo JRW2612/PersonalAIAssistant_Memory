@@ -13,6 +13,7 @@
     <ProjectReference Include="..\PersonalAIAssistant.Memory.Core\PersonalAIAssistant.Memory.Core.csproj" />
     <ProjectReference Include="..\PersonalAIAssistant.Memory.Business\PersonalAIAssistant.Memory.Business.csproj" />
     <ProjectReference Include="..\PersonalAIAssistant.Memory.Infrastructure\PersonalAIAssistant.Memory.Infrastructure.csproj" />
+    <ProjectReference Include="..\PersonalAIAssistant.Memory.Api\PersonalAIAssistant.Memory.Api.csproj" />
   </ItemGroup>
 
   <ItemGroup>
