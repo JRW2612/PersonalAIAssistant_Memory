@@ -1,6 +1,6 @@
 using MediatR;
 using PersonalAIAssistant.Memory.Business.Queries;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
+using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Models;
 using System.Linq;
 using System.Text;

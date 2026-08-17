@@ -1,4 +1,4 @@
-namespace PersonalAIAssistant.Memory.Core.Interfaces.Others
+namespace PersonalAIAssistant.Memory.Core.Interfaces.AI
 {
     /// <summary>
     /// Abstraction over any chat/completion AI provider (OpenAI, Gemini, Azure OpenAI, etc.).

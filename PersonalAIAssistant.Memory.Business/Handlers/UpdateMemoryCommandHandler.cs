@@ -2,16 +2,11 @@ using MediatR;
 using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Domains.ValueObjects;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
-using PersonalAIAssistant.Memory.Core.Interfaces.Mongo;
+using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
+using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 
 namespace PersonalAIAssistant.Memory.Business.Handlers
 {
-    /// <summary>
-    /// Handles <see cref="UpdateMemoryCommand"/> by rehydrating the aggregate from the event
-    /// store, applying the <c>UpdateRawText</c> domain method for any supported field updates,
-    /// persisting the resulting events, and publishing them to the event bus.
-    /// </summary>
     public class UpdateMemoryCommandHandler : IRequestHandler<UpdateMemoryCommand, Guid>
     {
         private readonly IEventStore _eventStore;
@@ -34,7 +29,6 @@ namespace PersonalAIAssistant.Memory.Business.Handlers
             var aggregate = new MemoryAggregate(new MemoryId(request.MemoryId));
             aggregate.LoadFromHistory(history);
 
-            // Apply each supported field update via the appropriate domain method.
             if (request.UpdatedFields != null &&
                 request.UpdatedFields.TryGetValue(nameof(MemoryAggregate.RawText), out var newText))
             {

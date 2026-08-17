@@ -1,8 +1,6 @@
-
-
 using PersonalAIAssistant.Memory.Events;
 
-namespace PersonalAIAssistant.Memory.Core.Interfaces.Mongo
+namespace PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing
 {
     /// <summary>
     /// Abstraction for event store operations in CQRS + Event Sourcing.

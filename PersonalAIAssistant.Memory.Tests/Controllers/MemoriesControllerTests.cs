@@ -8,11 +8,9 @@ using PersonalAIAssistant.Memory.Api.DTOs;
 using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Business.Queries;
 using PersonalAIAssistant.Memory.Core.Domains.Enums;
-using PersonalAIAssistant.Memory.Core.Interfaces.Sql;
 using PersonalAIAssistant.Memory.Core.Models;
 using System;
 using System.Collections.Generic;
-using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
@@ -22,14 +20,12 @@ namespace PersonalAIAssistant.Memory.Tests.Controllers
     public class MemoriesControllerTests
     {
         private readonly Mock<IMediator> _mediatorMock;
-        private readonly Mock<IReadModelRepository> _readRepoMock;
         private readonly MemoriesController _controller;
 
         public MemoriesControllerTests()
         {
             _mediatorMock = new Mock<IMediator>();
-            _readRepoMock = new Mock<IReadModelRepository>();
-            _controller = new MemoriesController(_mediatorMock.Object, _readRepoMock.Object);
+            _controller = new MemoriesController(_mediatorMock.Object);
 
             var httpContext = new DefaultHttpContext();
             httpContext.Items["UserId"] = "test-user-123";
@@ -110,9 +106,9 @@ namespace PersonalAIAssistant.Memory.Tests.Controllers
                 CreatedAt = DateTime.UtcNow
             };
 
-            _readRepoMock
-                .Setup(r => r.GetMemoriesByIdsAsync(It.Is<Guid[]>(ids => ids.Length == 1 && ids[0] == memoryId), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new List<MemoryReadModel> { memoryModel });
+            _mediatorMock
+                .Setup(m => m.Send(It.Is<GetMemoryByIdQuery>(q => q.MemoryId == memoryId && q.UserId == "test-user-123"), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(memoryModel);
 
             // Act
             var result = await _controller.GetMemoryById(memoryId, CancellationToken.None);
@@ -127,9 +123,9 @@ namespace PersonalAIAssistant.Memory.Tests.Controllers
         {
             // Arrange
             var memoryId = Guid.NewGuid();
-            _readRepoMock
-                .Setup(r => r.GetMemoriesByIdsAsync(It.IsAny<Guid[]>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new List<MemoryReadModel>());
+            _mediatorMock
+                .Setup(m => m.Send(It.Is<GetMemoryByIdQuery>(q => q.MemoryId == memoryId), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((MemoryReadModel?)null);
 
             // Act
             var result = await _controller.GetMemoryById(memoryId, CancellationToken.None);

@@ -1,6 +1,6 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
-using PersonalAIAssistant.Memory.Core.Interfaces.Sql;
+using PersonalAIAssistant.Memory.Core.Interfaces.Persistence;
 
 namespace PersonalAIAssistant.Memory.Business.Security
 {

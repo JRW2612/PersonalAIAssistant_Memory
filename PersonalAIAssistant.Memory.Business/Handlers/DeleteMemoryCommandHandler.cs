@@ -2,8 +2,8 @@ using MediatR;
 using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Domains.ValueObjects;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
-using PersonalAIAssistant.Memory.Core.Interfaces.Mongo;
+using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
+using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 
 namespace PersonalAIAssistant.Memory.Business.Handlers
 {
@@ -41,8 +41,6 @@ namespace PersonalAIAssistant.Memory.Business.Handlers
 
             int expectedVersion = aggregate.Version - uncommittedEvents.Count;
             await _eventStore.AppendEventsAsync(streamId, uncommittedEvents, expectedVersion, cancellationToken);
-
-            // Publish all events in one batch
             await _eventBus.PublishAsync(uncommittedEvents, cancellationToken);
 
             aggregate.ClearUncommittedEvents();

@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
-using PersonalAIAssistant.Memory.Core.Interfaces.Sql;
+using PersonalAIAssistant.Memory.Core.Interfaces.AI;
+using PersonalAIAssistant.Memory.Core.Interfaces.Persistence;
 using PersonalAIAssistant.Memory.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -15,6 +15,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
         private readonly IEmbeddingService _embeddingService;
         private readonly IVectorMemoryRepository _vectorRepo;
         private readonly IReadModelRepository _readRepo;
+        private readonly IRerankingScorer _rerankingScorer;
         private readonly ILogger<MemoryRetrievalService> _logger;
         private readonly IAiMetricsLogger _metricsLogger;
 
@@ -22,12 +23,14 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
             IEmbeddingService embeddingService,
             IVectorMemoryRepository vectorRepo,
             IReadModelRepository readRepo,
+            IRerankingScorer rerankingScorer,
             ILogger<MemoryRetrievalService> logger,
             IAiMetricsLogger metricsLogger)
         {
             _embeddingService = embeddingService;
             _vectorRepo = vectorRepo;
             _readRepo = readRepo;
+            _rerankingScorer = rerankingScorer;
             _logger = logger;
             _metricsLogger = metricsLogger;
         }
@@ -47,7 +50,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
                 PromptTokens: request.QueryText.Length / 4, // naive token approx
                 CompletionTokens: 0,
                 TotalTokens: request.QueryText.Length / 4,
-                EstimatedCostUsd: 0.000001, // arbitrary tiny cost for mock
+                EstimatedCostUsd: 0.000001,
                 Latency: DateTimeOffset.UtcNow - start,
                 WasCacheHit: false,
                 WasFallback: false,
@@ -71,7 +74,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
 
             var scoredMemories = new List<RetrievedMemory>();
 
-            // 4. Score and rerank
+            // 4. Score and rerank via extracted IRerankingScorer (OCP & SRP)
             foreach (var hit in searchResults)
             {
                 if (!readModels.TryGetValue(hit.MemoryId, out var readModel) || readModel.Archived)
@@ -80,24 +83,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
                 }
 
                 double vectorScore = hit.Score;
-                
-                double recencyScore = 1.0; 
-                if (readModel.CreatedAt != default) 
-                {
-                    var daysAgo = (DateTime.UtcNow - readModel.CreatedAt).TotalDays;
-                    if (daysAgo < 0) daysAgo = 0;
-                    recencyScore = Math.Exp(-0.05 * daysAgo);
-                }
-
-                double importanceScore = readModel.Importance switch
-                {
-                    Core.Domains.Enums.MemoryImportance.High => 1.0,
-                    Core.Domains.Enums.MemoryImportance.Medium => 0.5,
-                    Core.Domains.Enums.MemoryImportance.Low => 0.1,
-                    _ => 0.5
-                };
-
-                double finalScore = (0.6 * vectorScore) + (0.3 * recencyScore) + (0.1 * importanceScore);
+                double finalScore = _rerankingScorer.CalculateScore(vectorScore, readModel.CreatedAt, readModel.Importance, out double recencyScore);
 
                 scoredMemories.Add(new RetrievedMemory(
                     hit.MemoryId,

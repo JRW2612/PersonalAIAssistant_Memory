@@ -2,16 +2,11 @@ using MediatR;
 using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Domains.ValueObjects;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
-using PersonalAIAssistant.Memory.Core.Interfaces.Mongo;
+using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
+using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 
 namespace PersonalAIAssistant.Memory.Business.Handlers
 {
-    /// <summary>
-    /// Handles <see cref="MemoryIndexedCommand"/> by rehydrating the aggregate and recording
-    /// the vector-indexing fact as a <c>MemoryIndexedEvent</c> in the event stream.
-    /// This is dispatched by <c>EmbeddingIndexingEventHandler</c> after a successful embedding upsert.
-    /// </summary>
     public class MemoryIndexedCommandHandler : IRequestHandler<MemoryIndexedCommand, bool>
     {
         private readonly IEventStore _eventStore;

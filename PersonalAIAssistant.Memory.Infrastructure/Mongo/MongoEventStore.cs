@@ -1,9 +1,8 @@
-// PersonalAIAssistant.Memory.Infrastructure.Mongo/MongoEventStore.cs
 using MongoDB.Bson;
 using MongoDB.Driver;
 using PersonalAIAssistant.Memory.Core.Exceptions;
-using PersonalAIAssistant.Memory.Core.Interfaces.Mongo;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
+using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
+using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using PersonalAIAssistant.Memory.Events;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
@@ -35,7 +34,6 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
             }
             catch (Exception ex)
             {
-                // Non-blocking fallback: Log or ignore on startup if MongoDB connection is delayed or offline
                 System.Diagnostics.Debug.WriteLine($"[MongoEventStore] Warning: Could not create index on startup: {ex.Message}");
             }
         }
@@ -97,7 +95,6 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
 
         public async Task<IReadOnlyList<(string StreamId, int CurrentVersion)>> GetStreamSummariesAsync(int limit, CancellationToken ct)
         {
-            // MongoDB aggregation: group by StreamId, find max version per stream, sort descending.
             var pipeline = new BsonDocument[]
             {
                 new("$group", new BsonDocument
@@ -117,8 +114,6 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
                 .ToList();
         }
 
-        // ─── Internal document mapping ───────────────────────────────────────────
-
         private class EventDocument
         {
             public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -132,7 +127,6 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
             public string UserId { get; set; } = string.Empty;
             public bool IsEncrypted { get; set; }
 
-            // Build the event-type map once from the Events assembly to avoid magic strings.
             private static readonly Dictionary<string, Type> EventTypeMap = typeof(MemoryEvent).Assembly
                 .GetTypes()
                 .Where(t => t.IsSubclassOf(typeof(MemoryEvent)) && !t.IsAbstract)
@@ -181,8 +175,6 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
                 var evt = (MemoryEvent?)System.Text.Json.JsonSerializer.Deserialize(payloadStr, specificType, options)
                     ?? throw new InvalidOperationException($"Failed to deserialize event payload for type '{EventType}'.");
 
-                // Restore metadata tracked by the document wrapper
-                // (overrides the initializer defaults set during deserialization).
                 evt.EventId = EventId;
                 evt.Version = Version;
                 evt.Timestamp = Timestamp;

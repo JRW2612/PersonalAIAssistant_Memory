@@ -1,4 +1,4 @@
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
+using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using System;
 using System.IO;
 using System.Security.Cryptography;
@@ -62,7 +62,6 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Security
 
         private static byte[] DeriveKey(string key)
         {
-            // Naive PBKDF2 key derivation to ensure we always get a 32-byte (256-bit) key
             using var derive = new Rfc2898DeriveBytes(key, new byte[] { 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8 }, 1000, HashAlgorithmName.SHA256);
             return derive.GetBytes(32);
         }

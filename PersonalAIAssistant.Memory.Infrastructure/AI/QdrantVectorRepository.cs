@@ -2,7 +2,7 @@ using Grpc.Core;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PersonalAIAssistant.Memory.Core.DTOs;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
+using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Models;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
@@ -76,14 +76,14 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
                     });
                 }
 
-#pragma warning disable CS0618 // Type or member is obsolete
+#pragma warning disable CS0618
                 var searchResult = await _client.SearchAsync(
                     collectionName: _collectionName,
                     vector: queryVector.ToArray(),
                     filter: filter,
                     limit: (ulong)topK,
                     cancellationToken: cts.Token);
-#pragma warning restore CS0618 // Type or member is obsolete
+#pragma warning restore CS0618
 
                 return searchResult.Select(h => new VectorSearchResult(
                     MemoryId: Guid.Parse(h.Id.Uuid),
@@ -132,7 +132,6 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
                     return;
                 }
 
-                // 1536 is standard for OpenAI / Gemini text embeddings
                 await _client.CreateCollectionAsync(
                     collectionName: _collectionName,
                     vectorsConfig: new VectorParams

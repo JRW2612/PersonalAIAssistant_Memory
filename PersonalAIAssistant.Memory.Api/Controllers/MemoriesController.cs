@@ -5,11 +5,9 @@ using PersonalAIAssistant.Memory.Api.DTOs;
 using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Business.Queries;
 using PersonalAIAssistant.Memory.Core.Domains.Enums;
-using PersonalAIAssistant.Memory.Core.Interfaces.Sql;
 using PersonalAIAssistant.Memory.Core.Models;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -20,12 +18,10 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
     public class MemoriesController : ControllerBase
     {
         private readonly IMediator _mediator;
-        private readonly IReadModelRepository _readRepo;
 
-        public MemoriesController(IMediator mediator, IReadModelRepository readRepo)
+        public MemoriesController(IMediator mediator)
         {
             _mediator = mediator;
-            _readRepo = readRepo;
         }
 
         private string GetCurrentUserId()
@@ -85,8 +81,9 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
         public async Task<IActionResult> GetMemoryById(Guid id, CancellationToken ct)
         {
             var userId = GetCurrentUserId();
-            var models = await _readRepo.GetMemoriesByIdsAsync(new[] { id }, ct);
-            var match = models.FirstOrDefault(m => string.Equals(m.UserId, userId, StringComparison.OrdinalIgnoreCase) || string.IsNullOrEmpty(m.UserId) || string.Equals(userId, "anonymous-user", StringComparison.OrdinalIgnoreCase));
+            var query = new GetMemoryByIdQuery(id, userId);
+            var match = await _mediator.Send(query, ct);
+
             if (match == null) return NotFound($"Memory with ID '{id}' was not found.");
             
             return Ok(match);

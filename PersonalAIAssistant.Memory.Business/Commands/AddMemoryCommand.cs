@@ -1,6 +1,6 @@
 using MediatR;
 using PersonalAIAssistant.Memory.Core.Domains.Enums;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
+using PersonalAIAssistant.Memory.Core.Interfaces.Common;
 
 namespace PersonalAIAssistant.Memory.Business.Commands
 {

@@ -2,8 +2,9 @@ using MediatR;
 using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Domains.Enums;
-using PersonalAIAssistant.Memory.Core.Interfaces.Mongo;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
+using PersonalAIAssistant.Memory.Core.Interfaces.AI;
+using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
+using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using PersonalAIAssistant.Memory.Events;
 
 namespace PersonalAIAssistant.Memory.Business.Handlers

@@ -1,4 +1,4 @@
-namespace PersonalAIAssistant.Memory.Core.Interfaces.Others
+namespace PersonalAIAssistant.Memory.Core.Interfaces.Security
 {
     public interface IEncryptionService
     {

@@ -2,19 +2,11 @@ using MediatR;
 using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Domains.ValueObjects;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
-using PersonalAIAssistant.Memory.Core.Interfaces.Mongo;
+using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
+using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 
 namespace PersonalAIAssistant.Memory.Business.Handlers
 {
-    /// <summary>
-    /// Handles <see cref="SnapshotCreatedCommand"/> by:
-    /// <list type="number">
-    ///   <item>Persisting the snapshot payload to the snapshot repository.</item>
-    ///   <item>Emitting a <c>SnapshotCreatedEvent</c> to the event stream so the snapshot
-    ///         is auditable and the aggregate's history reflects when it was taken.</item>
-    /// </list>
-    /// </summary>
     public class SnapshotCreatedCommandHandler : IRequestHandler<SnapshotCreatedCommand, Guid>
     {
         private readonly IEventStore _eventStore;
@@ -42,11 +34,9 @@ namespace PersonalAIAssistant.Memory.Business.Handlers
             var aggregate = new MemoryAggregate(new MemoryId(request.AggregateIdSnapshot));
             aggregate.LoadFromHistory(history);
 
-            // 1. Persist snapshot to the snapshot store.
             await _snapshotRepo.SaveSnapshotAsync(
                 streamId, request.SnapshotPayload, request.SnapshotVersion, cancellationToken);
 
-            // 2. Record the snapshot creation in the event stream for auditability.
             aggregate.CreateSnapshot(request.SnapshotPayload, request.SnapshotVersion, userId: "system");
 
             var uncommittedEvents = aggregate.UncommittedEvents.ToList();

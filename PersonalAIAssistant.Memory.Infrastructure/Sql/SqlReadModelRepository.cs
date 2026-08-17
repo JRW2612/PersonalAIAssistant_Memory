@@ -1,13 +1,21 @@
-// PersonalAIAssistant.Memory.Infrastructure.EF/SqlReadModelRepository.cs
 using Microsoft.EntityFrameworkCore;
 using PersonalAIAssistant.Memory.Core.Entities;
 using PersonalAIAssistant.Memory.Core.Models;
-using PersonalAIAssistant.Memory.Core.Interfaces.Sql;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
+using PersonalAIAssistant.Memory.Core.Interfaces.Persistence;
+using PersonalAIAssistant.Memory.Core.Interfaces.Security;
+using PersonalAIAssistant.Memory.Infrastructure.EF;
 
-namespace PersonalAIAssistant.Memory.Infrastructure.EF
+namespace PersonalAIAssistant.Memory.Infrastructure.Sql
 {
-    public class SqlReadModelRepository : IReadModelRepository, ITransactionalReadModelRepository
+    /// <summary>
+    /// Implements segregated persistence contracts for SQL read models, idempotency, locks, and retention queries.
+    /// </summary>
+    public class SqlReadModelRepository : 
+        IReadModelRepository, 
+        IEventIdempotencyStore, 
+        IProcessingLockStore, 
+        IRetentionQueryStore, 
+        ITransactionalReadModelRepository
     {
         private readonly ReadModelDbContext _db;
         private readonly IEncryptionService _encryptionService;
@@ -22,6 +30,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
             _encryptionService = encryptionService;
             _encryptOptions = encryptOptions;
         }
+
+        // ─── IReadModelRepository ────────────────────────────────────────────────
 
         public async Task UpsertAsync(MemoryReadModel model, CancellationToken cancellationToken)
         {
@@ -67,6 +77,35 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
             await _db.SaveChangesAsync(cancellationToken);
         }
 
+        public async Task<IEnumerable<MemoryReadModel>> GetMemoriesByIdsAsync(IEnumerable<Guid> memoryIds, CancellationToken ct)
+        {
+            var entities = await _db.MemoryReadModels
+                .Where(m => memoryIds.Contains(m.MemoryId))
+                .ToListAsync(ct);
+
+            return entities.Select(e => new MemoryReadModel
+            {
+                MemoryId = e.MemoryId,
+                UserId = e.UserId,
+                Summary = DecryptSummary(e.Summary, e.IsEncrypted, e.UserId),
+                TokenCount = e.TokenCount,
+                Archived = e.Archived,
+                Importance = e.Importance,
+                CreatedAt = e.CreatedAt
+            });
+        }
+
+        public async Task<int> GetMemoryCountByUserAsync(string userId, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(userId) || userId == "default")
+            {
+                return await _db.MemoryReadModels.CountAsync(m => !m.Archived, ct);
+            }
+            return await _db.MemoryReadModels.CountAsync(m => !m.Archived && m.UserId == userId, ct);
+        }
+
+        // ─── IEventIdempotencyStore ──────────────────────────────────────────────
+
         public async Task<bool> HasProcessedAsync(Guid aggregateId, int version, CancellationToken cancellationToken)
         {
             return await _db.ProcessedEvents.AnyAsync(p => p.AggregateId == aggregateId && p.Version == version, cancellationToken);
@@ -87,27 +126,10 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
             }
         }
 
-        public async Task<IEnumerable<ReadModelCandidate>> GetConsolidationCandidatesAsync(int batchSize, CancellationToken cancellationToken)
-        {
-            var rows = await _db.MemoryReadModels
-                .Where(m => !m.Archived && m.TokenCount > 50)
-                .OrderByDescending(m => m.TokenCount)
-                .ThenBy(m => m.CreatedAt)
-                .Take(batchSize)
-                .ToListAsync(cancellationToken);
-
-            return rows.Select(r => new ReadModelCandidate(
-                r.MemoryId,
-                r.StreamId,
-                DecryptSummary(r.Summary, r.IsEncrypted, r.UserId),
-                r.TokenCount,
-                r.CreatedAt,
-                r.Archived));
-        }
+        // ─── IProcessingLockStore ────────────────────────────────────────────────
 
         public async Task<bool> TryMarkProcessingAsync(Guid memoryId, CancellationToken cancellationToken)
         {
-            // Use a transaction to ensure atomic insert-if-not-exists
             try
             {
                 var existing = await _db.ProcessingLocks.FindAsync(new object[] { memoryId }, cancellationToken);
@@ -119,7 +141,6 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
             }
             catch (DbUpdateException)
             {
-                // likely a unique key violation -> someone else locked it
                 return false;
             }
         }
@@ -144,46 +165,24 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
             }
         }
 
-        public async Task ExecuteInTransactionAsync(Func<CancellationToken, Task> operation, CancellationToken ct)
+        // ─── IRetentionQueryStore ────────────────────────────────────────────────
+
+        public async Task<IEnumerable<ReadModelCandidate>> GetConsolidationCandidatesAsync(int batchSize, CancellationToken cancellationToken)
         {
-            if (_db.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
-            {
-                await operation(ct);
-                await _db.SaveChangesAsync(ct);
-                return;
-            }
+            var rows = await _db.MemoryReadModels
+                .Where(m => !m.Archived && m.TokenCount > 50)
+                .OrderByDescending(m => m.TokenCount)
+                .ThenBy(m => m.CreatedAt)
+                .Take(batchSize)
+                .ToListAsync(cancellationToken);
 
-            // Use a transaction so all Upserts and MarkProcessed happen atomically
-            await using var tx = await _db.Database.BeginTransactionAsync(ct);
-            try
-            {
-                await operation(ct);
-                await _db.SaveChangesAsync(ct);
-                await tx.CommitAsync(ct);
-            }
-            catch
-            {
-                await tx.RollbackAsync(ct);
-                throw;
-            }
-        }
-
-        public async Task<IEnumerable<MemoryReadModel>> GetMemoriesByIdsAsync(IEnumerable<Guid> memoryIds, CancellationToken ct)
-        {
-            var entities = await _db.MemoryReadModels
-                .Where(m => memoryIds.Contains(m.MemoryId))
-                .ToListAsync(ct);
-
-            return entities.Select(e => new MemoryReadModel
-            {
-                MemoryId = e.MemoryId,
-                UserId = e.UserId,
-                Summary = DecryptSummary(e.Summary, e.IsEncrypted, e.UserId),
-                TokenCount = e.TokenCount,
-                Archived = e.Archived,
-                Importance = e.Importance,
-                CreatedAt = e.CreatedAt
-            });
+            return rows.Select(r => new ReadModelCandidate(
+                r.MemoryId,
+                r.StreamId,
+                DecryptSummary(r.Summary, r.IsEncrypted, r.UserId),
+                r.TokenCount,
+                r.CreatedAt,
+                r.Archived));
         }
 
         public async Task<IEnumerable<ReadModelCandidate>> GetExpiredMemoriesAsync(int ttlDays, CancellationToken ct)
@@ -191,7 +190,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
             var cutoff = DateTime.UtcNow.AddDays(-ttlDays);
             var rows = await _db.MemoryReadModels
                 .Where(m => !m.Archived && m.CreatedAt < cutoff)
-                .Take(100) // batch size limit
+                .Take(100)
                 .ToListAsync(ct);
 
             return rows.Select(r => new ReadModelCandidate(
@@ -220,13 +219,29 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
                 r.Archived));
         }
 
-        public async Task<int> GetMemoryCountByUserAsync(string userId, CancellationToken ct)
+        // ─── ITransactionalReadModelRepository ───────────────────────────────────
+
+        public async Task ExecuteInTransactionAsync(Func<CancellationToken, Task> operation, CancellationToken ct)
         {
-            if (string.IsNullOrWhiteSpace(userId) || userId == "default")
+            if (_db.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
             {
-                return await _db.MemoryReadModels.CountAsync(m => !m.Archived, ct);
+                await operation(ct);
+                await _db.SaveChangesAsync(ct);
+                return;
             }
-            return await _db.MemoryReadModels.CountAsync(m => !m.Archived && m.UserId == userId, ct);
+
+            await using var tx = await _db.Database.BeginTransactionAsync(ct);
+            try
+            {
+                await operation(ct);
+                await _db.SaveChangesAsync(ct);
+                await tx.CommitAsync(ct);
+            }
+            catch
+            {
+                await tx.RollbackAsync(ct);
+                throw;
+            }
         }
 
         private string DecryptSummary(string summary, bool isEncrypted, string userId)
@@ -239,7 +254,6 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
             }
             catch
             {
-                // Fallback to ciphertext or empty string if decryption fails (e.g. key rotation/mismatch)
                 return summary;
             }
         }

@@ -2,15 +2,18 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
-using PersonalAIAssistant.Memory.Core.Interfaces.Mongo;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
-using PersonalAIAssistant.Memory.Core.Interfaces.Sql;
+using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
+using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
+using PersonalAIAssistant.Memory.Core.Interfaces.Persistence;
+using PersonalAIAssistant.Memory.Core.Interfaces.AI;
+using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using PersonalAIAssistant.Memory.Core.Models;
 using PersonalAIAssistant.Memory.Infrastructure.AI;
 using PersonalAIAssistant.Memory.Infrastructure.AI.Gemini;
 using PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi;
 using PersonalAIAssistant.Memory.Infrastructure.AI.Teams;
 using PersonalAIAssistant.Memory.Infrastructure.EF;
+using PersonalAIAssistant.Memory.Infrastructure.Sql;
 using PersonalAIAssistant.Memory.Infrastructure.Events;
 using PersonalAIAssistant.Memory.Infrastructure.Mongo;
 using PersonalAIAssistant.Memory.Events;
@@ -27,11 +30,14 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             string mongoConnectionString,
             string mongoDatabaseName = "PersonalAIAssistantMemory")
         {
-            // Register EF Core Read Model DbContext & Repository
+            // Register EF Core Read Model DbContext & Segregated Repositories (ISP & DIP)
             services.AddDbContext<ReadModelDbContext>(configureDbContext);
-            services.AddScoped<IReadModelRepository, SqlReadModelRepository>();
-            services.AddScoped<ITransactionalReadModelRepository>(sp =>
-                (SqlReadModelRepository)sp.GetRequiredService<IReadModelRepository>());
+            services.AddScoped<SqlReadModelRepository>();
+            services.AddScoped<IReadModelRepository>(sp => sp.GetRequiredService<SqlReadModelRepository>());
+            services.AddScoped<IEventIdempotencyStore>(sp => sp.GetRequiredService<SqlReadModelRepository>());
+            services.AddScoped<IProcessingLockStore>(sp => sp.GetRequiredService<SqlReadModelRepository>());
+            services.AddScoped<IRetentionQueryStore>(sp => sp.GetRequiredService<SqlReadModelRepository>());
+            services.AddScoped<ITransactionalReadModelRepository>(sp => sp.GetRequiredService<SqlReadModelRepository>());
 
             // Register MongoDB client, Database & Event Store / Snapshot Repository
             services.AddSingleton<IMongoClient>(new MongoClient(mongoConnectionString));
@@ -43,12 +49,6 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.AddSingleton<IEventStore, MongoEventStore>();
             services.AddSingleton<ISnapshotRepository, MongoSnapshotRepository>();
 
-            services.AddSingleton<ISnapshotRepository, MongoSnapshotRepository>();
-
-            // Register Event Bus
-            // For MVP/Demo we fall back to InMemoryEventBus if MassTransit is not configured,
-            // but since we are going live, we configure MassTransit below.
-            
             return services;
         }
 
@@ -58,7 +58,6 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
 
         /// <summary>
         /// Registers OpenAI, Gemini, and Teams Webhook services.
-        /// Call this alongside AddMemoryInfrastructureServices() in the host builder.
         /// </summary>
         public static IServiceCollection AddAiProviders(
             this IServiceCollection services,
@@ -93,8 +92,6 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             }).AddStandardResilienceHandler();
 
             // ── Provider implementations ─────────────────────────────────────
-            // All registered so IEnumerable<IAIProvider> resolves all of them;
-            // AIProviderFactory picks the right one by name.
             services.AddScoped<IAIProvider, OpenAiChatProvider>();
             services.AddScoped<IAIProvider, GeminiChatProvider>();
             services.AddScoped<IAIProviderFactory, AIProviderFactory>();
@@ -106,9 +103,10 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             // Teams notification sender
             services.AddScoped<INotificationSender, TeamsWebhookSender>();
 
-            // ── New memory features (Chunking, Metrics, Retrieval) ───────────
+            // ── Memory features (Chunking, Metrics, Retrieval, Scorer) ───────
             services.AddSingleton<IAiMetricsLogger, AiMetricsLogger>();
             services.AddSingleton<ITextChunker, TextChunker>();
+            services.AddSingleton<IRerankingScorer, DefaultRerankingScorer>();
             services.AddScoped<IMemoryRetrievalService, MemoryRetrievalService>();
             services.AddSingleton<IEncryptionService, PersonalAIAssistant.Memory.Infrastructure.Security.AesEncryptionService>();
 

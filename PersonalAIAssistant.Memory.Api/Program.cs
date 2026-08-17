@@ -5,6 +5,9 @@ using Microsoft.OpenApi.Models;
 using PersonalAIAssistant.Memory.Api.Middleware;
 using PersonalAIAssistant.Memory.Api.Extensions;
 using PersonalAIAssistant.Memory.Business.Extensions;
+using PersonalAIAssistant.Memory.Core.Interfaces.AI;
+using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
+using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using PersonalAIAssistant.Memory.Infrastructure.Extensions;
 using System.Text;
 
@@ -108,10 +111,10 @@ builder.Services.AddAiProviders(builder.Configuration);
 
 if (useInMemory)
 {
-    builder.Services.AddSingleton<PersonalAIAssistant.Memory.Core.Interfaces.Mongo.IEventStore, PersonalAIAssistant.Memory.Infrastructure.Mongo.InMemoryEventStore>();
-    builder.Services.AddSingleton<PersonalAIAssistant.Memory.Core.Interfaces.Others.ISnapshotRepository, PersonalAIAssistant.Memory.Infrastructure.Mongo.InMemorySnapshotRepository>();
-    builder.Services.AddScoped<PersonalAIAssistant.Memory.Core.Interfaces.Others.IEventBus, PersonalAIAssistant.Memory.Infrastructure.InMemory.InMemoryEventBus>();
-    builder.Services.AddSingleton<PersonalAIAssistant.Memory.Core.Interfaces.Others.IVectorMemoryRepository, PersonalAIAssistant.Memory.Infrastructure.InMemory.InMemoryVectorMemoryRepository>();
+    builder.Services.AddSingleton<IEventStore, PersonalAIAssistant.Memory.Infrastructure.Mongo.InMemoryEventStore>();
+    builder.Services.AddSingleton<ISnapshotRepository, PersonalAIAssistant.Memory.Infrastructure.Mongo.InMemorySnapshotRepository>();
+    builder.Services.AddScoped<IEventBus, PersonalAIAssistant.Memory.Infrastructure.InMemory.InMemoryEventBus>();
+    builder.Services.AddSingleton<IVectorMemoryRepository, PersonalAIAssistant.Memory.Infrastructure.InMemory.InMemoryVectorMemoryRepository>();
 }
 
 // 5. Register Business Layer Services & Pipeline Behaviors (Logging, Validation, Authorization)

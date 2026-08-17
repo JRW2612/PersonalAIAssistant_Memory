@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Logging;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
+using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Models;
 using System;
 using System.Collections.Concurrent;

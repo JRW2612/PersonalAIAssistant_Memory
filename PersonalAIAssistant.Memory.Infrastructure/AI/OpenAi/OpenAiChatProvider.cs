@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
+using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Models;
 using Polly.Registry;
 using System.Net.Http.Headers;
@@ -84,13 +84,12 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi
                 var completionTokens = body.Usage?.CompletionTokens ?? 0;
                 var totalTokens = body.Usage?.TotalTokens ?? 0;
 
-                // Simple rate table for GPT-4o-mini
                 var cost = (promptTokens * 0.00015 / 1000.0) + (completionTokens * 0.00060 / 1000.0);
 
                 _metrics.Record(new AiCallMetrics(
                     Provider: ProviderName,
                     Model: request.Model,
-                    Operation: "chat", // Will be refined when IAIProvider gets operation context
+                    Operation: "chat",
                     PromptTokens: promptTokens,
                     CompletionTokens: completionTokens,
                     TotalTokens: totalTokens,
@@ -105,8 +104,6 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi
                 return text;
             }, ct);
         }
-
-        // ── Request / Response DTOs ──────────────────────────────────────────────
 
         private sealed class ChatRequest
         {

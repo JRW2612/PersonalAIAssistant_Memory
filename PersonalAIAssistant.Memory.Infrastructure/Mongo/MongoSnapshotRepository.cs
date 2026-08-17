@@ -1,8 +1,6 @@
-// PersonalAIAssistant.Memory.Infrastructure.Mongo/MongoSnapshotRepository.cs
 using MongoDB.Driver;
 using PersonalAIAssistant.Memory.Core.DTOs;
-using PersonalAIAssistant.Memory.Core.Interfaces.Mongo;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
+using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
 using System.Text.Json;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
@@ -36,26 +34,19 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
             }
             catch (Exception ex)
             {
-                // Non-blocking fallback: Log or ignore on startup if MongoDB connection is delayed or offline
                 System.Diagnostics.Debug.WriteLine($"[MongoSnapshotRepository] Warning: Could not create index on startup: {ex.Message}");
             }
         }
 
-        /// <summary>
-        /// Finds streams where the number of events since the last snapshot meets or exceeds
-        /// <paramref name="eventThreshold"/>. Uses <see cref="IEventStore.GetStreamSummariesAsync"/>
-        /// to discover streams, then checks each against the latest snapshot version.
-        /// </summary>
-        public async Task<IEnumerable<string>> GetStreamsNeedingSnapshotAsync(
-            int eventThreshold, int batchSize, CancellationToken ct)
+        public async Task<IReadOnlyList<string>> GetStreamsNeedingSnapshotAsync(
+            int eventThreshold, int limit, CancellationToken ct)
         {
-            // Fetch the top streams by total event count (conservative multiplier to account for filtering).
-            var streamSummaries = await _eventStore.GetStreamSummariesAsync(batchSize * 3, ct);
+            var streamSummaries = await _eventStore.GetStreamSummariesAsync(limit * 3, ct);
 
             var result = new List<string>();
             foreach (var (streamId, currentVersion) in streamSummaries)
             {
-                if (result.Count >= batchSize) break;
+                if (result.Count >= limit) break;
 
                 var latestSnapshot = await _collection
                     .Find(Builders<SnapshotDocument>.Filter.Eq(d => d.StreamId, streamId))
@@ -98,8 +89,6 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
             };
             await _collection.InsertOneAsync(doc, cancellationToken: ct);
         }
-
-        // ─── Internal document type ──────────────────────────────────────────────
 
         private class SnapshotDocument
         {

@@ -3,10 +3,10 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.DependencyInjection;
 using PersonalAIAssistant.Memory.Core.Domains;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
+using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
+using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
+using PersonalAIAssistant.Memory.Core.Interfaces.Persistence;
 using PersonalAIAssistant.Memory.Core.Models;
-using PersonalAIAssistant.Memory.Core.Interfaces.Sql;
-using PersonalAIAssistant.Memory.Core.Interfaces.Mongo;
 using System;
 using System.Linq;
 using System.Threading;
@@ -17,12 +17,12 @@ namespace PersonalAIAssistant.Memory.Business.Workers
     public class RetentionWorker : BackgroundService
     {
         private readonly ILogger<RetentionWorker> _logger;
-        private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _scopeFactory;
+        private readonly IServiceScopeFactory _scopeFactory;
         private readonly RetentionOptions _opts;
 
         public RetentionWorker(
             ILogger<RetentionWorker> logger,
-            Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopeFactory,
+            IServiceScopeFactory scopeFactory,
             IOptions<RetentionOptions> opts)
         {
             _logger = logger;
@@ -34,7 +34,6 @@ namespace PersonalAIAssistant.Memory.Business.Workers
         {
             _logger.LogInformation("RetentionWorker started.");
 
-            // Run once an hour
             var delay = TimeSpan.FromHours(1);
 
             while (!stoppingToken.IsCancellationRequested)
@@ -43,15 +42,17 @@ namespace PersonalAIAssistant.Memory.Business.Workers
                 {
                     using (var scope = _scopeFactory.CreateScope())
                     {
+                        var retentionStore = scope.ServiceProvider.GetRequiredService<IRetentionQueryStore>();
+                        var lockStore = scope.ServiceProvider.GetRequiredService<IProcessingLockStore>();
                         var readRepo = scope.ServiceProvider.GetRequiredService<IReadModelRepository>();
                         var eventStore = scope.ServiceProvider.GetRequiredService<IEventStore>();
                         var eventBus = scope.ServiceProvider.GetRequiredService<IEventBus>();
 
-                        await ProcessExpiredMemoriesAsync(readRepo, eventStore, eventBus, stoppingToken);
+                        await ProcessExpiredMemoriesAsync(retentionStore, lockStore, eventStore, eventBus, stoppingToken);
                         
                         if (_opts.HardDeleteEnabled)
                         {
-                            await ProcessArchivedMemoriesAsync(readRepo, eventStore, eventBus, stoppingToken);
+                            await ProcessArchivedMemoriesAsync(retentionStore, lockStore, eventStore, eventBus, stoppingToken);
                         }
 
                         await EnforceCapacityLimitAsync(readRepo, "default", stoppingToken);
@@ -73,21 +74,31 @@ namespace PersonalAIAssistant.Memory.Business.Workers
             _logger.LogInformation("RetentionWorker stopping.");
         }
 
-        private async Task ProcessExpiredMemoriesAsync(IReadModelRepository readRepo, IEventStore eventStore, IEventBus eventBus, CancellationToken ct)
+        private async Task ProcessExpiredMemoriesAsync(
+            IRetentionQueryStore retentionStore,
+            IProcessingLockStore lockStore,
+            IEventStore eventStore,
+            IEventBus eventBus,
+            CancellationToken ct)
         {
-            var expired = await readRepo.GetExpiredMemoriesAsync(_opts.TtlDays, ct);
+            var expired = await retentionStore.GetExpiredMemoriesAsync(_opts.TtlDays, ct);
             foreach (var candidate in expired)
             {
-                await ArchiveMemoryAsync(readRepo, eventStore, eventBus, candidate, "TTL expired", ct);
+                await ArchiveMemoryAsync(lockStore, eventStore, eventBus, candidate, "TTL expired", ct);
             }
         }
 
-        private async Task ProcessArchivedMemoriesAsync(IReadModelRepository readRepo, IEventStore eventStore, IEventBus eventBus, CancellationToken ct)
+        private async Task ProcessArchivedMemoriesAsync(
+            IRetentionQueryStore retentionStore,
+            IProcessingLockStore lockStore,
+            IEventStore eventStore,
+            IEventBus eventBus,
+            CancellationToken ct)
         {
-            var archived = await readRepo.GetArchivedMemoriesAsync(_opts.ArchiveDays, ct);
+            var archived = await retentionStore.GetArchivedMemoriesAsync(_opts.ArchiveDays, ct);
             foreach (var candidate in archived)
             {
-                await DeleteMemoryAsync(readRepo, eventStore, eventBus, candidate, "Hard delete after archive period", ct);
+                await DeleteMemoryAsync(lockStore, eventStore, eventBus, candidate, "Hard delete after archive period", ct);
             }
         }
 
@@ -101,9 +112,15 @@ namespace PersonalAIAssistant.Memory.Business.Workers
             }
         }
 
-        private async Task ArchiveMemoryAsync(IReadModelRepository readRepo, IEventStore eventStore, IEventBus eventBus, ReadModelCandidate candidate, string reason, CancellationToken ct)
+        private async Task ArchiveMemoryAsync(
+            IProcessingLockStore lockStore,
+            IEventStore eventStore,
+            IEventBus eventBus,
+            ReadModelCandidate candidate,
+            string reason,
+            CancellationToken ct)
         {
-            if (!await readRepo.TryMarkProcessingAsync(candidate.MemoryId, ct)) return;
+            if (!await lockStore.TryMarkProcessingAsync(candidate.MemoryId, ct)) return;
 
             try
             {
@@ -121,18 +138,24 @@ namespace PersonalAIAssistant.Memory.Business.Workers
                     await eventBus.PublishAsync(newEvents, ct);
                 }
                 
-                await readRepo.MarkProcessedAsync(candidate.MemoryId, ct);
+                await lockStore.MarkProcessedAsync(candidate.MemoryId, ct);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to archive memory {MemoryId}", candidate.MemoryId);
-                await readRepo.UnmarkProcessingAsync(candidate.MemoryId, ct);
+                await lockStore.UnmarkProcessingAsync(candidate.MemoryId, ct);
             }
         }
 
-        private async Task DeleteMemoryAsync(IReadModelRepository readRepo, IEventStore eventStore, IEventBus eventBus, ReadModelCandidate candidate, string reason, CancellationToken ct)
+        private async Task DeleteMemoryAsync(
+            IProcessingLockStore lockStore,
+            IEventStore eventStore,
+            IEventBus eventBus,
+            ReadModelCandidate candidate,
+            string reason,
+            CancellationToken ct)
         {
-            if (!await readRepo.TryMarkProcessingAsync(candidate.MemoryId, ct)) return;
+            if (!await lockStore.TryMarkProcessingAsync(candidate.MemoryId, ct)) return;
 
             try
             {
@@ -150,12 +173,12 @@ namespace PersonalAIAssistant.Memory.Business.Workers
                     await eventBus.PublishAsync(newEvents, ct);
                 }
                 
-                await readRepo.MarkProcessedAsync(candidate.MemoryId, ct);
+                await lockStore.MarkProcessedAsync(candidate.MemoryId, ct);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to delete memory {MemoryId}", candidate.MemoryId);
-                await readRepo.UnmarkProcessingAsync(candidate.MemoryId, ct);
+                await lockStore.UnmarkProcessingAsync(candidate.MemoryId, ct);
             }
         }
     }

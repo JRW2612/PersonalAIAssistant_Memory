@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
+using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using PersonalAIAssistant.Memory.Core.Models;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
@@ -10,10 +10,6 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Teams
     /// <summary>
     /// INotificationSender implementation that posts Adaptive Cards to a
     /// Microsoft Teams channel via an Incoming Webhook connector URL.
-    ///
-    /// Setup (one-time, no Azure registration needed):
-    ///   1. In Teams, open the channel → ··· → Connectors → Incoming Webhook → Configure.
-    ///   2. Copy the generated URL into appsettings / user-secrets under Teams:WebhookUrl.
     /// </summary>
     public sealed class TeamsWebhookSender : INotificationSender
     {
@@ -31,7 +27,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Teams
             _logger = logger;
         }
 
-        public async Task SendAsync(string title, string body, CancellationToken ct)
+        public async Task SendAsync(string title, string body, CancellationToken ct = default)
         {
             if (!_opts.Enabled)
             {
@@ -45,7 +41,6 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Teams
                 return;
             }
 
-            // Adaptive Card payload (version 1.4 — supported in all Teams clients)
             var card = new AdaptiveCardPayload
             {
                 Attachments =
@@ -73,13 +68,11 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Teams
                 var error = await response.Content.ReadAsStringAsync(ct);
                 _logger.LogError("[Teams] Webhook POST failed — status: {Status}, body: {Body}",
                     response.StatusCode, error);
-                response.EnsureSuccessStatusCode(); // surface to caller / Polly
+                response.EnsureSuccessStatusCode();
             }
 
             _logger.LogInformation("[Teams] Notification sent — title: {Title}", title);
         }
-
-        // ── Adaptive Card DTOs ───────────────────────────────────────────────────
 
         private sealed class AdaptiveCardPayload
         {

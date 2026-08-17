@@ -1,7 +1,7 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
+using PersonalAIAssistant.Memory.Core.Interfaces.Common;
 
 namespace PersonalAIAssistant.Memory.Business.Behaviors
 {
@@ -29,8 +29,6 @@ namespace PersonalAIAssistant.Memory.Business.Behaviors
         {
             var requestName = typeof(TRequest).Name;
 
-            // Prefer the correlation ID carried by the request so traces are consistent
-            // across the whole request pipeline; fall back to a new GUID when absent.
             var correlationId = request is ICorrelatedRequest correlated && correlated.CorrelationId is not null
                 ? correlated.CorrelationId
                 : Guid.NewGuid().ToString();

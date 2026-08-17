@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Options;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
+using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Models;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.AI

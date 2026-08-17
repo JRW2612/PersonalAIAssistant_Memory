@@ -1,6 +1,6 @@
 using MassTransit;
 using PersonalAIAssistant.Memory.Events;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
+using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,8 +25,6 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Events
         {
             foreach (var @event in events)
             {
-                // Note: MassTransit supports batch publishing, but for simplicity we iterate.
-                // Depending on volume, BatchPublish is preferred.
                 await _publishEndpoint.Publish((object)@event, cancellationToken);
             }
         }

@@ -2,8 +2,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PersonalAIAssistant.Memory.Core.Domains;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
-using PersonalAIAssistant.Memory.Core.Interfaces.Mongo;
+using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
 using Polly.Registry;
 
 namespace PersonalAIAssistant.Memory.Business.Workers

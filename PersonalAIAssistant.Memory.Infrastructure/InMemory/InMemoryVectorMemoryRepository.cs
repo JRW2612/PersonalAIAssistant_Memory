@@ -1,5 +1,5 @@
 using PersonalAIAssistant.Memory.Core.DTOs;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
+using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;

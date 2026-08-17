@@ -1,6 +1,5 @@
 using PersonalAIAssistant.Memory.Core.DTOs;
-using PersonalAIAssistant.Memory.Core.Interfaces.Mongo;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
+using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -24,7 +23,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
             _eventStore = eventStore;
         }
 
-        public async Task<IEnumerable<string>> GetStreamsNeedingSnapshotAsync(int eventThreshold, int batchSize, CancellationToken ct)
+        public async Task<IReadOnlyList<string>> GetStreamsNeedingSnapshotAsync(int eventThreshold, int batchSize, CancellationToken ct)
         {
             var streamSummaries = await _eventStore.GetStreamSummariesAsync(batchSize * 3, ct);
             var result = new List<string>();

@@ -4,38 +4,33 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.DependencyInjection;
 using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Exceptions;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
-using Polly.Registry;
+using PersonalAIAssistant.Memory.Core.Interfaces.AI;
+using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
+using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
+using PersonalAIAssistant.Memory.Core.Interfaces.Persistence;
 using PersonalAIAssistant.Memory.Core.Models;
-using PersonalAIAssistant.Memory.Core.Interfaces.Mongo;
-using PersonalAIAssistant.Memory.Core.Interfaces.Sql;
+using Polly.Registry;
 
 namespace PersonalAIAssistant.Memory.Business.Workers
 {
-    /// <summary>Configuration options for <see cref="ConsolidationWorker"/>.</summary>
     public class ConsolidationWorkerOptions
     {
-        /// <summary>How long to wait between consolidation batches when the queue is empty.</summary>
         public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(30);
-
-        /// <summary>Maximum number of memories processed per batch.</summary>
         public int BatchSize { get; set; } = 10;
-
-        /// <summary>Maximum number of concurrent LLM compression calls.</summary>
         public int MaxConcurrentLLM { get; set; } = 3;
     }
 
     public class ConsolidationWorker : BackgroundService
     {
         private readonly ILogger<ConsolidationWorker> _logger;
-        private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _scopeFactory;
+        private readonly IServiceScopeFactory _scopeFactory;
         private readonly ResiliencePipelineProvider<string> _resilienceProvider;
         private readonly ConsolidationWorkerOptions _opts;
         private readonly SemaphoreSlim _llmSemaphore;
 
         public ConsolidationWorker(
             ILogger<ConsolidationWorker> logger,
-            Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopeFactory,
+            IServiceScopeFactory scopeFactory,
             ResiliencePipelineProvider<string> resilienceProvider,
             IOptions<ConsolidationWorkerOptions> opts)
         {
@@ -56,8 +51,8 @@ namespace PersonalAIAssistant.Memory.Business.Workers
                 try
                 {
                     using var scope = _scopeFactory.CreateScope();
-                    var readRepo = scope.ServiceProvider.GetRequiredService<IReadModelRepository>();
-                    var candidates = await readRepo.GetConsolidationCandidatesAsync(_opts.BatchSize, stoppingToken);
+                    var retentionStore = scope.ServiceProvider.GetRequiredService<IRetentionQueryStore>();
+                    var candidates = await retentionStore.GetConsolidationCandidatesAsync(_opts.BatchSize, stoppingToken);
 
                     if (!candidates.Any())
                     {
@@ -70,7 +65,7 @@ namespace PersonalAIAssistant.Memory.Business.Workers
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
-                    break;  // graceful shutdown
+                    break;
                 }
                 catch (Exception ex)
                 {
@@ -85,23 +80,21 @@ namespace PersonalAIAssistant.Memory.Business.Workers
         private async Task ProcessCandidateAsync(ReadModelCandidate candidate, CancellationToken ct)
         {
             using var scope = _scopeFactory.CreateScope();
-            var readRepo = scope.ServiceProvider.GetRequiredService<IReadModelRepository>();
+            var lockStore = scope.ServiceProvider.GetRequiredService<IProcessingLockStore>();
             var eventStore = scope.ServiceProvider.GetRequiredService<IEventStore>();
             var eventBus = scope.ServiceProvider.GetRequiredService<IEventBus>();
             var compressionService = scope.ServiceProvider.GetRequiredService<ICompressionService>();
 
-            // Idempotency: skip if another worker instance already claimed this item.
-            if (!await readRepo.TryMarkProcessingAsync(candidate.MemoryId, ct))
+            if (!await lockStore.TryMarkProcessingAsync(candidate.MemoryId, ct))
                 return;
 
-            // Acquire semaphore AFTER claiming the lock so we don't block the lock path.
             await _llmSemaphore.WaitAsync(ct);
             try
             {
                 var aiPipeline = _resilienceProvider.GetPipeline("AiServiceProtection");
                 var workerPipeline = _resilienceProvider.GetPipeline("WorkerRetry");
 
-                // 1. Compress/summarize text via LLM (protected by Circuit Breaker & Retry)
+                // 1. Compress/summarize text via LLM
                 var compressed = await aiPipeline.ExecuteAsync(async token => 
                     await compressionService.CompressAsync(candidate.Text, token), ct);
 
@@ -122,7 +115,7 @@ namespace PersonalAIAssistant.Memory.Business.Workers
                 {
                     await eventStore.AppendEventsAsync(candidate.StreamId, newEvents, expectedVersion, token);
                     await eventBus.PublishAsync(newEvents, token);
-                    await readRepo.MarkProcessedAsync(candidate.MemoryId, token);
+                    await lockStore.MarkProcessedAsync(candidate.MemoryId, token);
                 }, ct);
 
                 aggregate.ClearUncommittedEvents();
@@ -130,12 +123,12 @@ namespace PersonalAIAssistant.Memory.Business.Workers
             catch (ConcurrencyException)
             {
                 _logger.LogWarning("Concurrency conflict while consolidating {MemoryId} — will retry next cycle.", candidate.MemoryId);
-                await readRepo.UnmarkProcessingAsync(candidate.MemoryId, ct);
+                await lockStore.UnmarkProcessingAsync(candidate.MemoryId, ct);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error consolidating {MemoryId}.", candidate.MemoryId);
-                await readRepo.UnmarkProcessingAsync(candidate.MemoryId, ct);
+                await lockStore.UnmarkProcessingAsync(candidate.MemoryId, ct);
             }
             finally
             {

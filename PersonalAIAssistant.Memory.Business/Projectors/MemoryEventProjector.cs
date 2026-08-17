@@ -1,33 +1,36 @@
-// PersonalAIAssistant.Memory.Business.Projectors/MemoryEventProjector.cs
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
-using PersonalAIAssistant.Memory.Core.Interfaces.Sql;
+using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
+using PersonalAIAssistant.Memory.Core.Interfaces.Persistence;
 using PersonalAIAssistant.Memory.Core.Models;
 using PersonalAIAssistant.Memory.Core.Domains.Enums;
 using PersonalAIAssistant.Memory.Events;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace PersonalAIAssistant.Memory.Business.Projectors
 {
     /// <summary>
-    /// Projects domain events into the SQL read model.
-    /// Implements <see cref="IMemoryEventHandler"/> so it can be registered with
-    /// <see cref="IEventBus"/> and receive events automatically after they are published.
+    /// Projects domain events into the SQL read model with idempotency tracking.
+    /// Implements <see cref="IMemoryEventHandler"/> for single- and batch-event projection.
     /// </summary>
     public class MemoryEventProjector : IMemoryEventHandler
     {
         private readonly IReadModelRepository _readRepo;
+        private readonly IEventIdempotencyStore _idempotencyStore;
 
-        public MemoryEventProjector(IReadModelRepository readRepo)
+        public MemoryEventProjector(IReadModelRepository readRepo, IEventIdempotencyStore idempotencyStore)
         {
             _readRepo = readRepo;
+            _idempotencyStore = idempotencyStore;
         }
 
         // ─── IMemoryEventHandler ─────────────────────────────────────────────────
 
-        /// <summary>Entry point used by <see cref="IEventBus"/> for single-event dispatch.</summary>
         public async Task HandleAsync(MemoryEvent evt, CancellationToken ct)
             => await ApplyEventIfNotProcessedAsync(evt, ct);
 
-        /// <summary>Entry point used by <see cref="IEventBus"/> for batch-event dispatch.</summary>
         public Task HandleAsync(IEnumerable<MemoryEvent> events, CancellationToken ct)
             => Handle(events, ct);
 
@@ -36,7 +39,7 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
         public async Task Handle(MemoryAddedEvent evt, CancellationToken ct)
         {
             if (evt == null) return;
-            if (await _readRepo.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+            if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
 
             var summary = evt.RawText?.Length > 300 ? evt.RawText[..300] + "..." : evt.RawText ?? string.Empty;
             var model = new MemoryReadModel
@@ -51,13 +54,13 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
             };
 
             await _readRepo.UpsertAsync(model, ct);
-            await _readRepo.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
+            await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
         }
 
         public async Task Handle(MemoryUpdatedEvent evt, CancellationToken ct)
         {
             if (evt == null) return;
-            if (await _readRepo.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+            if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
 
             if (evt.UpdatedFields != null && evt.UpdatedFields.TryGetValue("RawText", out var newText))
             {
@@ -74,13 +77,13 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
                 await _readRepo.UpsertAsync(model, ct);
             }
 
-            await _readRepo.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
+            await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
         }
 
         public async Task Handle(MemoryCompressedEvent evt, CancellationToken ct)
         {
             if (evt == null) return;
-            if (await _readRepo.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+            if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
 
             var summary = evt.CompressedText ?? string.Empty;
             var model = new MemoryReadModel
@@ -94,13 +97,13 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
             };
 
             await _readRepo.UpsertAsync(model, ct);
-            await _readRepo.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
+            await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
         }
 
         public async Task Handle(MemoryConsolidatedEvent evt, CancellationToken ct)
         {
             if (evt == null) return;
-            if (await _readRepo.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+            if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
 
             var summary = evt.ConsolidatedText ?? string.Empty;
             var model = new MemoryReadModel
@@ -114,24 +117,22 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
             };
 
             await _readRepo.UpsertAsync(model, ct);
-            await _readRepo.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
+            await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
         }
 
         public async Task Handle(MemoryIndexedEvent evt, CancellationToken ct)
         {
             if (evt == null) return;
-            if (await _readRepo.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+            if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
 
-            // Indexing doesn't change the summary; mark processed for idempotency only.
-            await _readRepo.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
+            await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
         }
 
         public async Task Handle(MemoryDeletedEvent evt, CancellationToken ct)
         {
             if (evt == null) return;
-            if (await _readRepo.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+            if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
 
-            // Use AggregateId (base-class) — not evt.MemoryId (redundant field) — for consistency.
             var model = new MemoryReadModel
             {
                 MemoryId = evt.AggregateId,
@@ -143,17 +144,14 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
             };
 
             await _readRepo.UpsertAsync(model, ct);
-            await _readRepo.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
+            await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
         }
 
         public async Task Handle(MemoryArchivedEvent evt, CancellationToken ct)
         {
             if (evt == null) return;
-            if (await _readRepo.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+            if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
 
-            // For archiving, we could just fetch and update, or upsert with basic info. 
-            // In a real app we'd fetch the existing and update `Archived = true`.
-            // For now, let's assume Upsert handles partial or we construct it.
             var model = new MemoryReadModel
             {
                 MemoryId = evt.AggregateId,
@@ -163,23 +161,19 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
             };
 
             await _readRepo.UpsertAsync(model, ct);
-            await _readRepo.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
+            await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
         }
 
         public async Task Handle(SnapshotCreatedEvent evt, CancellationToken ct)
         {
             if (evt == null) return;
-            if (await _readRepo.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+            if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
 
-            await _readRepo.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
+            await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
         }
 
         // ─── Batch handler ───────────────────────────────────────────────────────
 
-        /// <summary>
-        /// Applies multiple events in a single transaction when the repository supports it.
-        /// Events are sorted by aggregate + version to ensure correct ordering.
-        /// </summary>
         public async Task Handle(IEnumerable<MemoryEvent> events, CancellationToken ct)
         {
             if (events == null) return;
@@ -205,7 +199,6 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
                 return;
             }
 
-            // Fallback: sequential without a transaction
             foreach (var evt in ordered)
             {
                 ct.ThrowIfCancellationRequested();
@@ -218,7 +211,7 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
         private async Task ApplyEventIfNotProcessedAsync(MemoryEvent evt, CancellationToken ct)
         {
             if (evt == null) return;
-            if (await _readRepo.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+            if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
 
             switch (evt)
             {
@@ -231,18 +224,11 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
                 case MemoryDeletedEvent deleted:       await Handle(deleted, ct);       break;
                 case SnapshotCreatedEvent snapshot:    await Handle(snapshot, ct);      break;
                 default:
-                    // Unknown event type: mark processed to prevent infinite reprocessing.
-                    await _readRepo.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
+                    await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
                     break;
-                // NOTE: The typed Handle() overloads already call MarkProcessedAsync internally,
-                // so we do NOT call it again here — that was the duplicate-write bug.
             }
         }
 
-        /// <summary>
-        /// Naive whitespace-based token approximation. This is intentionally fast and cheap.
-        /// For accurate LLM token counts, inject a proper tokenizer (e.g. SharpToken / TikToken).
-        /// </summary>
         private static int CountTokens(string text)
         {
             if (string.IsNullOrWhiteSpace(text)) return 0;

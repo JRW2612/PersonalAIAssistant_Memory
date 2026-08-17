@@ -5,8 +5,9 @@ using PersonalAIAssistant.Memory.Business.Behaviors;
 using PersonalAIAssistant.Memory.Business.EventHandlers;
 using PersonalAIAssistant.Memory.Business.Projectors;
 using PersonalAIAssistant.Memory.Business.Workers;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
 using PersonalAIAssistant.Memory.Business.Security;
+using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
+using PersonalAIAssistant.Memory.Events;
 using System.Reflection;
 using Polly;
 using Polly.Retry;
@@ -68,9 +69,10 @@ namespace PersonalAIAssistant.Memory.Business.Extensions
             // FluentValidation validators
             services.AddValidatorsFromAssembly(assembly);
 
-            // Scoped event handlers (projectors & indexing handlers for the Event Bus)
+            // Scoped event handlers & projectors (untyped and typed subscribers)
             services.AddScoped<IMemoryEventHandler, MemoryEventProjector>();
-            services.AddScoped<IMemoryEventHandler, EmbeddingIndexingEventHandler>();
+            services.AddScoped<IMemoryEventHandler<MemoryAddedEvent>, EmbeddingIndexingEventHandler>();
+            services.AddScoped<IMemoryEventHandler<MemoryConsolidatedEvent>, MemoryConsolidatedNotificationHandler>();
 
             // Worker options and background services
             if (configureConsolidation != null)

@@ -1,5 +1,5 @@
 using PersonalAIAssistant.Memory.Core.Exceptions;
-using PersonalAIAssistant.Memory.Core.Interfaces.Mongo;
+using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
 using PersonalAIAssistant.Memory.Events;
 using System;
 using System.Collections.Concurrent;
@@ -10,9 +10,6 @@ using System.Threading.Tasks;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
 {
-    /// <summary>
-    /// Thread-safe in-memory event store implementation for local development, testing, and fallback when MongoDB is offline.
-    /// </summary>
     public class InMemoryEventStore : IEventStore
     {
         private readonly ConcurrentDictionary<string, List<MemoryEvent>> _streams = new();
@@ -27,7 +24,6 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
             if (events == null || events.Count == 0) return Task.CompletedTask;
 
             _streams.AddOrUpdate(streamId,
-                // Add new stream
                 key =>
                 {
                     if (expectedVersion != 0)
@@ -45,7 +41,6 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
                     }
                     return newStream;
                 },
-                // Update existing stream
                 (key, existingStream) =>
                 {
                     lock (existingStream)

@@ -3,48 +3,44 @@ using Microsoft.Extensions.Logging;
 using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Domains.ValueObjects;
-using PersonalAIAssistant.Memory.Core.Interfaces.Others;
-using PersonalAIAssistant.Memory.Core.Interfaces.Mongo;
+using PersonalAIAssistant.Memory.Core.Interfaces.AI;
+using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
+using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 
 namespace PersonalAIAssistant.Memory.Business.Handlers
 {
     /// <summary>
     /// Handles ConsolidateMemoriesCommand.
-    /// Uses a large AI model (via IAIProviderFactory) to produce a coherent,
-    /// de-duplicated summary, then pushes a Teams notification with the result.
-    /// AI call failures degrade gracefully — consolidation still proceeds.
+    /// Uses an AI model (via IAIProviderFactory) to produce a coherent,
+    /// de-duplicated summary and persists the consolidated aggregate.
+    /// Notifications are decoupled and dispatched via event handling (MemoryConsolidatedNotificationHandler).
     /// </summary>
     public class ConsolidateMemoriesCommandHandler : IRequestHandler<ConsolidateMemoriesCommand, Guid>
     {
         private readonly IEventStore _eventStore;
         private readonly IEventBus _eventBus;
         private readonly IAIProviderFactory _aiFactory;
-        private readonly INotificationSender _notifier;
         private readonly ILogger<ConsolidateMemoriesCommandHandler> _logger;
 
         public ConsolidateMemoriesCommandHandler(
             IEventStore eventStore,
             IEventBus eventBus,
             IAIProviderFactory aiFactory,
-            INotificationSender notifier,
             ILogger<ConsolidateMemoriesCommandHandler> logger)
         {
             _eventStore = eventStore;
             _eventBus   = eventBus;
             _aiFactory  = aiFactory;
-            _notifier   = notifier;
             _logger     = logger;
         }
 
         public async Task<Guid> Handle(ConsolidateMemoriesCommand request, CancellationToken cancellationToken)
         {
             // ── 1. AI-assisted semantic consolidation ────────────────────────────
-            // Use the default (large) provider to merge and de-duplicate memories.
-            // A per-request override can be added by forwarding a provider name via the command.
             var enrichedText = request.ConsolidatedText;
             try
             {
-                var provider = _aiFactory.GetProvider(); // falls back to AiProviderOptions.Default
+                var provider = _aiFactory.GetProvider();
                 var prompt =
                     $"""
                     You are a personal memory assistant.
@@ -62,7 +58,6 @@ namespace PersonalAIAssistant.Memory.Business.Handlers
             }
             catch (Exception ex)
             {
-                // Non-fatal: log and fall back to the original text.
                 _logger.LogWarning(ex,
                     "[Consolidate] AI enrichment failed for memoryId {Id} — using original text.",
                     request.NewMemoryId);
@@ -87,23 +82,9 @@ namespace PersonalAIAssistant.Memory.Business.Handlers
 
             var streamId = $"memory-{aggregate.Id.Value}";
 
-            // New stream — expectedVersion is 0
             await _eventStore.AppendEventsAsync(streamId, uncommittedEvents, 0, cancellationToken);
             await _eventBus.PublishAsync(uncommittedEvents, cancellationToken);
             aggregate.ClearUncommittedEvents();
-
-            // ── 3. Teams notification (best-effort) ──────────────────────────────
-            try
-            {
-                await _notifier.SendAsync(
-                    title: "Memory Consolidated",
-                    body: $"**Merged {request.MergedMemoryIds.Count} memories** for user `{request.UserId}`.\n\n{enrichedText}",
-                    ct: cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[Consolidate] Teams notification failed — non-fatal.");
-            }
 
             return aggregate.Id.Value;
         }
