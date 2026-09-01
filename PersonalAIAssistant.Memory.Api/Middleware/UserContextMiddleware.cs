@@ -28,12 +28,6 @@ namespace PersonalAIAssistant.Memory.Api.Middleware
                       ?? context.User.FindFirstValue(ClaimTypes.Name);
             }
 
-            // Fallback for system integration / local development header if non-authenticated endpoint
-            if (string.IsNullOrWhiteSpace(userId) && context.Request.Headers.TryGetValue("X-User-Id", out var headerUserId))
-            {
-                userId = headerUserId.ToString();
-            }
-
             if (!string.IsNullOrWhiteSpace(userId))
             {
                 context.Items["UserId"] = userId;
