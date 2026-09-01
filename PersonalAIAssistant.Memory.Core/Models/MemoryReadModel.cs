@@ -6,6 +6,7 @@ namespace PersonalAIAssistant.Memory.Core.Models
     {
         public Guid MemoryId { get; set; }
         public string UserId { get; set; } = string.Empty;
+        public string TenantId { get; set; } = "default";
         public string Summary { get; set; } = string.Empty;
         public int TokenCount { get; set; }
         public bool Archived { get; set; }

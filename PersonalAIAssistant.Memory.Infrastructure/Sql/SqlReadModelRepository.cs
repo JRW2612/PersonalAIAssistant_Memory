@@ -95,6 +95,24 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Sql
             });
         }
 
+        public async Task<IEnumerable<MemoryReadModel>> GetMemoriesByUserAsync(string userId, CancellationToken ct)
+        {
+            var entities = await _db.MemoryReadModels
+                .Where(m => m.UserId == userId)
+                .ToListAsync(ct);
+
+            return entities.Select(e => new MemoryReadModel
+            {
+                MemoryId = e.MemoryId,
+                UserId = e.UserId,
+                Summary = DecryptSummary(e.Summary, e.IsEncrypted, e.UserId),
+                TokenCount = e.TokenCount,
+                Archived = e.Archived,
+                Importance = e.Importance,
+                CreatedAt = e.CreatedAt
+            });
+        }
+
         public async Task<int> GetMemoryCountByUserAsync(string userId, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(userId) || userId == "default")

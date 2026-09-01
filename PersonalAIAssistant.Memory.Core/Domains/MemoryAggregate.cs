@@ -18,6 +18,8 @@ namespace PersonalAIAssistant.Memory.Core.Domains
         public MemoryId Id { get; private set; }
         public int Version { get; private set; }
         public MemoryStatus Status { get; private set; } = MemoryStatus.Active;
+        public bool IsLegalHold { get; private set; }
+        public string? LegalHoldReason { get; private set; }
         public MemoryImportance Importance { get; private set; } = MemoryImportance.Medium;
 
         public string RawText { get; private set; } = string.Empty;
@@ -137,6 +139,7 @@ namespace PersonalAIAssistant.Memory.Core.Domains
         {
             CoreGuard.NotNullOrWhiteSpace(reason, nameof(reason));
             if (Status == MemoryStatus.Deleted || Status == MemoryStatus.Archived) return;  // idempotent
+            if (IsLegalHold) throw new DomainException($"Cannot archive memory '{Id.Value}' — it is under legal hold: {LegalHoldReason}");
 
             var evt = new MemoryArchivedEvent
             {
@@ -153,6 +156,7 @@ namespace PersonalAIAssistant.Memory.Core.Domains
         {
             CoreGuard.NotNullOrWhiteSpace(reason, nameof(reason));
             if (Status == MemoryStatus.Deleted) return;  // idempotent
+            if (IsLegalHold) throw new DomainException($"Cannot delete memory '{Id.Value}' — it is under legal hold: {LegalHoldReason}");
 
             var evt = new MemoryDeletedEvent
             {
@@ -161,6 +165,41 @@ namespace PersonalAIAssistant.Memory.Core.Domains
                 Reason = reason,
                 UserId = userId,
                 EventType = nameof(MemoryDeletedEvent)
+            };
+            Emit(evt);
+        }
+
+        /// <summary>Places a legal hold on this memory, preventing deletion and automated archival.</summary>
+        public void ApplyLegalHold(string reason, string auditorId)
+        {
+            CoreGuard.NotNullOrWhiteSpace(reason, nameof(reason));
+            CoreGuard.NotNullOrWhiteSpace(auditorId, nameof(auditorId));
+            if (Status == MemoryStatus.Deleted) throw new DomainException("Cannot apply legal hold to a deleted memory.");
+            if (IsLegalHold) return; // idempotent
+
+            var evt = new LegalHoldAppliedEvent
+            {
+                AggregateId = Id,
+                Reason = reason,
+                AuditorId = auditorId,
+                UserId = auditorId,
+                EventType = nameof(LegalHoldAppliedEvent)
+            };
+            Emit(evt);
+        }
+
+        /// <summary>Releases an active legal hold, restoring normal retention lifecycle.</summary>
+        public void ReleaseLegalHold(string auditorId)
+        {
+            CoreGuard.NotNullOrWhiteSpace(auditorId, nameof(auditorId));
+            if (!IsLegalHold) return; // idempotent
+
+            var evt = new LegalHoldReleasedEvent
+            {
+                AggregateId = Id,
+                AuditorId = auditorId,
+                UserId = auditorId,
+                EventType = nameof(LegalHoldReleasedEvent)
             };
             Emit(evt);
         }
@@ -264,6 +303,16 @@ namespace PersonalAIAssistant.Memory.Core.Domains
                 case SnapshotCreatedEvent:
                     // Snapshot creation is recorded in the event stream for auditability;
                     // aggregate state itself does not change.
+                    break;
+
+                case LegalHoldAppliedEvent lhApplied:
+                    IsLegalHold = true;
+                    LegalHoldReason = lhApplied.Reason;
+                    break;
+
+                case LegalHoldReleasedEvent:
+                    IsLegalHold = false;
+                    LegalHoldReason = null;
                     break;
             }
 

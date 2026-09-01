@@ -24,6 +24,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi
         private readonly ResiliencePipelineProvider<string> _polly;
         private readonly ILogger<OpenAiChatProvider> _logger;
         private readonly IAiMetricsLogger _metrics;
+        private readonly IAiGovernanceValidator _governance;
 
         private static readonly JsonSerializerOptions JsonOpts = new()
         {
@@ -36,17 +37,20 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi
             IOptions<AiProviderOptions> opts,
             ResiliencePipelineProvider<string> polly,
             ILogger<OpenAiChatProvider> logger,
-            IAiMetricsLogger metrics)
+            IAiMetricsLogger metrics,
+            IAiGovernanceValidator governance)
         {
             _http   = httpFactory.CreateClient("openai");
             _opts   = opts.Value.OpenAi;
             _polly  = polly;
             _logger = logger;
             _metrics = metrics;
+            _governance = governance;
         }
 
         public async Task<string> GetResponseAsync(string prompt, CancellationToken ct)
         {
+            _governance.ValidateProvider("openai");
             var pipeline = _polly.GetPipeline("AiServiceProtection");
 
             return await pipeline.ExecuteAsync(async token =>
@@ -68,6 +72,10 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi
                 };
                 httpRequest.Headers.Authorization =
                     new AuthenticationHeaderValue("Bearer", _opts.ApiKey);
+                foreach (var header in _governance.GetComplianceHeaders())
+                {
+                    httpRequest.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                }
 
                 var start = DateTimeOffset.UtcNow;
                 var response = await _http.SendAsync(httpRequest, token);

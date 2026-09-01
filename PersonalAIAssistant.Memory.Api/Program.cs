@@ -18,6 +18,8 @@ builder.AddObservability();
 
 // 2. Add API Controllers & OpenAPI/Swagger
 builder.Services.AddControllers();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<PersonalAIAssistant.Memory.Core.Interfaces.Security.IUserContext, PersonalAIAssistant.Memory.Api.Security.HttpUserContext>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {

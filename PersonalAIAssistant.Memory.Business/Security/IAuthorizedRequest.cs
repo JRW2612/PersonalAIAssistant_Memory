@@ -4,5 +4,6 @@ namespace PersonalAIAssistant.Memory.Business.Security
     {
         Guid MemoryId { get; }
         string UserId { get; }
+        string TenantId { get; }
     }
 }

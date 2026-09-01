@@ -8,6 +8,7 @@ using PersonalAIAssistant.Memory.Core.Interfaces.Persistence;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using PersonalAIAssistant.Memory.Core.Models;
+using PersonalAIAssistant.Memory.Infrastructure.Security;
 using PersonalAIAssistant.Memory.Infrastructure.AI;
 using PersonalAIAssistant.Memory.Infrastructure.AI.Gemini;
 using PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi;
@@ -65,6 +66,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
         {
             // ── Bind strongly-typed options ──────────────────────────────────
             services.Configure<AiProviderOptions>(configuration.GetSection(AiProviderOptions.SectionName));
+            services.Configure<AiGovernanceOptions>(configuration.GetSection(AiGovernanceOptions.SectionName));
+            services.AddSingleton<IAiGovernanceValidator, CorporateAiGovernanceValidator>();
             services.Configure<OpenAiOptions>(configuration.GetSection(OpenAiOptions.SectionName));
             services.Configure<GeminiOptions>(configuration.GetSection(GeminiOptions.SectionName));
             services.Configure<TeamsOptions>(configuration.GetSection(TeamsOptions.SectionName));
@@ -72,6 +75,9 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.Configure<ChunkingOptions>(configuration.GetSection("Chunking"));
             services.Configure<RetentionOptions>(configuration.GetSection(RetentionOptions.SectionName));
             services.Configure<EncryptionOptions>(configuration.GetSection(EncryptionOptions.SectionName));
+            services.Configure<CmekOptions>(configuration.GetSection(CmekOptions.SectionName));
+            services.Configure<DlpOptions>(configuration.GetSection(DlpOptions.SectionName));
+            services.AddSingleton<IDataLossPreventionService, RuleBasedDlpService>();
 
             // ── Named HttpClients with Polly Resilience ──────────────────────
             services.AddHttpClient("openai", client =>
@@ -108,7 +114,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.AddSingleton<ITextChunker, TextChunker>();
             services.AddSingleton<IRerankingScorer, DefaultRerankingScorer>();
             services.AddScoped<IMemoryRetrievalService, MemoryRetrievalService>();
-            services.AddSingleton<IEncryptionService, PersonalAIAssistant.Memory.Infrastructure.Security.AesEncryptionService>();
+            services.AddSingleton<PersonalAIAssistant.Memory.Infrastructure.Security.AesEncryptionService>();
+            services.AddSingleton<IEncryptionService, PersonalAIAssistant.Memory.Infrastructure.Security.AesGcmEncryptionService>();
 
             // ── Vector Database (Qdrant) ─────────────────────────────────────
             services.Configure<QdrantOptions>(configuration.GetSection(QdrantOptions.SectionName));

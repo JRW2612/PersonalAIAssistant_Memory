@@ -128,6 +128,15 @@ namespace PersonalAIAssistant.Memory.Business.Workers
                 var aggregate = new MemoryAggregate();
                 aggregate.LoadFromHistory(history);
 
+                if (aggregate.IsLegalHold)
+                {
+                    _logger.LogInformation(
+                        "[Retention] Skipping memory {MemoryId} — under legal hold: {Reason}",
+                        candidate.MemoryId, aggregate.LegalHoldReason);
+                    await lockStore.UnmarkProcessingAsync(candidate.MemoryId, ct);
+                    return;
+                }
+
                 aggregate.Archive(reason, "system");
 
                 var newEvents = aggregate.UncommittedEvents.ToList();
@@ -162,6 +171,15 @@ namespace PersonalAIAssistant.Memory.Business.Workers
                 var history = await eventStore.GetEventsAsync(candidate.StreamId, ct);
                 var aggregate = new MemoryAggregate();
                 aggregate.LoadFromHistory(history);
+
+                if (aggregate.IsLegalHold)
+                {
+                    _logger.LogInformation(
+                        "[Retention] Skipping memory {MemoryId} — under legal hold: {Reason}",
+                        candidate.MemoryId, aggregate.LegalHoldReason);
+                    await lockStore.UnmarkProcessingAsync(candidate.MemoryId, ct);
+                    return;
+                }
 
                 aggregate.Delete(reason, "system");
 

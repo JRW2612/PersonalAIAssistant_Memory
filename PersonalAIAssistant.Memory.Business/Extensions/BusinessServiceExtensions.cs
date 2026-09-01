@@ -29,6 +29,7 @@ namespace PersonalAIAssistant.Memory.Business.Extensions
             {
                 cfg.RegisterServicesFromAssembly(assembly);
                 cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
+                cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(DataLossPreventionBehavior<,>));
                 cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(AuthorizationBehavior<,>));
                 cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
             });

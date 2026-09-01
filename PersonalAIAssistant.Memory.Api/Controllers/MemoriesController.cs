@@ -153,5 +153,50 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
             var newId = await _mediator.Send(command, ct);
             return Ok(new ConsolidateMemoriesResponseDto(newId, "Consolidated"));
         }
+
+        /// <summary>
+        /// Applies a legal hold to a memory, preventing automated deletion and archival.
+        /// Requires ComplianceAuditor or Admin role.
+        /// </summary>
+        [HttpPost("{id:guid}/legal-hold")]
+        [Authorize(Roles = "ComplianceAuditor,Admin")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        public async Task<IActionResult> ApplyLegalHold(Guid id, [FromBody] LegalHoldDto dto, CancellationToken ct)
+        {
+            var auditorId = GetCurrentUserId();
+            var command = new PersonalAIAssistant.Memory.Business.Commands.ApplyLegalHoldCommand(id, dto.Reason, auditorId);
+            await _mediator.Send(command, ct);
+            return NoContent();
+        }
+
+        /// <summary>
+        /// Releases a legal hold from a memory, restoring normal lifecycle.
+        /// Requires ComplianceAuditor or Admin role.
+        /// </summary>
+        [HttpDelete("{id:guid}/legal-hold")]
+        [Authorize(Roles = "ComplianceAuditor,Admin")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        public async Task<IActionResult> ReleaseLegalHold(Guid id, CancellationToken ct)
+        {
+            var auditorId = GetCurrentUserId();
+            var command = new PersonalAIAssistant.Memory.Business.Commands.ReleaseLegalHoldCommand(id, auditorId);
+            await _mediator.Send(command, ct);
+            return NoContent();
+        }
+
+        /// <summary>
+        /// Purges all memories for a target user (GDPR Article 17 / employee offboarding).
+        /// Requires ComplianceAuditor or Admin role.
+        /// </summary>
+        [HttpPost("users/{userId}/purge")]
+        [Authorize(Roles = "ComplianceAuditor,Admin")]
+        [ProducesResponseType(typeof(PurgeResponseDto), StatusCodes.Status200OK)]
+        public async Task<IActionResult> PurgeUserMemories(string userId, [FromBody] PurgeRequestDto dto, CancellationToken ct)
+        {
+            var requestedBy = GetCurrentUserId();
+            var command = new PersonalAIAssistant.Memory.Business.Commands.PurgeUserMemoriesCommand(userId, requestedBy, dto.Reason);
+            var count = await _mediator.Send(command, ct);
+            return Ok(new PurgeResponseDto(userId, count, "Purged"));
+        }
     }
 }

@@ -7,6 +7,7 @@ namespace PersonalAIAssistant.Memory.Business.Commands
     (
          Guid MemoryId,
          string UserId,
-         IReadOnlyDictionary<string, string>? UpdatedFields = null
+         IReadOnlyDictionary<string, string>? UpdatedFields = null,
+         string TenantId = "default"
     ) : IRequest<Guid>, IAuthorizedRequest;
 }

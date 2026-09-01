@@ -24,6 +24,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Gemini
         private readonly ResiliencePipelineProvider<string> _polly;
         private readonly ILogger<GeminiChatProvider> _logger;
         private readonly IAiMetricsLogger _metrics;
+        private readonly IAiGovernanceValidator _governance;
 
         private static readonly JsonSerializerOptions JsonOpts = new()
         {
@@ -36,23 +37,26 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Gemini
             IOptions<AiProviderOptions> opts,
             ResiliencePipelineProvider<string> polly,
             ILogger<GeminiChatProvider> logger,
-            IAiMetricsLogger metrics)
+            IAiMetricsLogger metrics,
+            IAiGovernanceValidator governance)
         {
             _http   = httpFactory.CreateClient("gemini");
             _opts   = opts.Value.Gemini;
             _polly  = polly;
             _logger = logger;
             _metrics = metrics;
+            _governance = governance;
         }
 
         public async Task<string> GetResponseAsync(string prompt, CancellationToken ct)
         {
+            _governance.ValidateProvider("gemini");
             var pipeline = _polly.GetPipeline("AiServiceProtection");
 
             return await pipeline.ExecuteAsync(async token =>
             {
                 var model   = _opts.ConsolidationModel;
-                var url     = $"models/{model}:generateContent?key={_opts.ApiKey}";
+                var url     = $"models/{model}:generateContent";
 
                 var requestBody = new GenerateRequest
                 {
@@ -67,8 +71,18 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Gemini
                 _logger.LogDebug("[Gemini] Sending request — model: {Model}, prompt length: {Len}",
                     model, prompt.Length);
 
+                var requestMessage = new HttpRequestMessage(HttpMethod.Post, url)
+                {
+                    Content = JsonContent.Create(requestBody, options: JsonOpts)
+                };
+                requestMessage.Headers.TryAddWithoutValidation("x-goog-api-key", _opts.ApiKey);
+                foreach (var header in _governance.GetComplianceHeaders())
+                {
+                    requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                }
+
                 var start = DateTimeOffset.UtcNow;
-                var response = await _http.PostAsJsonAsync(url, requestBody, JsonOpts, token);
+                var response = await _http.SendAsync(requestMessage, token);
                 response.EnsureSuccessStatusCode();
                 var latency = DateTimeOffset.UtcNow - start;
 

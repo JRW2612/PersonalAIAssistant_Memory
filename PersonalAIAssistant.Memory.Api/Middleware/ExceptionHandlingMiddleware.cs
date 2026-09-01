@@ -54,6 +54,21 @@ namespace PersonalAIAssistant.Memory.Api.Middleware
 
                 await context.Response.WriteAsync(JsonSerializer.Serialize(response));
             }
+            catch (PersonalAIAssistant.Memory.Core.Exceptions.DlpViolationException dlpEx)
+            {
+                _logger.LogWarning(dlpEx, "DLP Policy Violation: {Message}", dlpEx.Message);
+
+                context.Response.ContentType = "application/json";
+                context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+                await context.Response.WriteAsJsonAsync(new
+                {
+                    Status = 400,
+                    Title = "DLP Policy Violation",
+                    Detail = dlpEx.Message,
+                    Violations = dlpEx.Violations.Select(v => new { Category = v.Category.ToString(), v.Description })
+                });
+                return;
+            }
             catch (DomainException ex)
             {
                 _logger.LogWarning(ex, "Domain exception occurred: {Message}", ex.Message);

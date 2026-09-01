@@ -19,6 +19,11 @@ namespace PersonalAIAssistant.Memory.Core.Interfaces.Persistence
         Task<IEnumerable<MemoryReadModel>> GetMemoriesByIdsAsync(IEnumerable<Guid> memoryIds, CancellationToken ct);
 
         /// <summary>
+        /// Retrieves all read models for a specific user (used for GDPR erasure / offboarding).
+        /// </summary>
+        Task<IEnumerable<MemoryReadModel>> GetMemoriesByUserAsync(string userId, CancellationToken ct);
+
+        /// <summary>
         /// Gets the total number of memories for a user.
         /// </summary>
         Task<int> GetMemoryCountByUserAsync(string userId, CancellationToken ct);
