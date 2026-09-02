@@ -4,9 +4,6 @@ using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using PersonalAIAssistant.Memory.Events;
-using System;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace PersonalAIAssistant.Memory.Business.EventHandlers
 {

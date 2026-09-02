@@ -1,16 +1,12 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.DependencyInjection;
 using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
 using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using PersonalAIAssistant.Memory.Core.Interfaces.Persistence;
 using PersonalAIAssistant.Memory.Core.Models;
-using System;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace PersonalAIAssistant.Memory.Business.Workers
 {
@@ -49,7 +45,7 @@ namespace PersonalAIAssistant.Memory.Business.Workers
                         var eventBus = scope.ServiceProvider.GetRequiredService<IEventBus>();
 
                         await ProcessExpiredMemoriesAsync(retentionStore, lockStore, eventStore, eventBus, stoppingToken);
-                        
+
                         if (_opts.HardDeleteEnabled)
                         {
                             await ProcessArchivedMemoriesAsync(retentionStore, lockStore, eventStore, eventBus, stoppingToken);
@@ -107,7 +103,7 @@ namespace PersonalAIAssistant.Memory.Business.Workers
             var count = await readRepo.GetMemoryCountByUserAsync(userId, ct);
             if (count > _opts.MaxMemoriesPerUser)
             {
-                _logger.LogWarning("User {UserId} exceeded max memories ({Count} > {Max}). Archiving oldest.", 
+                _logger.LogWarning("User {UserId} exceeded max memories ({Count} > {Max}). Archiving oldest.",
                     userId, count, _opts.MaxMemoriesPerUser);
             }
         }
@@ -146,7 +142,7 @@ namespace PersonalAIAssistant.Memory.Business.Workers
                     await eventStore.AppendEventsAsync(candidate.StreamId, newEvents, expectedVersion, ct);
                     await eventBus.PublishAsync(newEvents, ct);
                 }
-                
+
                 await lockStore.MarkProcessedAsync(candidate.MemoryId, ct);
             }
             catch (Exception ex)
@@ -190,7 +186,7 @@ namespace PersonalAIAssistant.Memory.Business.Workers
                     await eventStore.AppendEventsAsync(candidate.StreamId, newEvents, expectedVersion, ct);
                     await eventBus.PublishAsync(newEvents, ct);
                 }
-                
+
                 await lockStore.MarkProcessedAsync(candidate.MemoryId, ct);
             }
             catch (Exception ex)

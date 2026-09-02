@@ -1,6 +1,5 @@
 using FluentValidation;
 using PersonalAIAssistant.Memory.Business.Commands;
-using PersonalAIAssistant.Memory.Core.Domains.Enums;
 
 namespace PersonalAIAssistant.Memory.Business.Validators
 {

@@ -22,8 +22,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Teams
             IOptions<TeamsOptions> opts,
             ILogger<TeamsWebhookSender> logger)
         {
-            _http   = httpFactory.CreateClient("teams");
-            _opts   = opts.Value;
+            _http = httpFactory.CreateClient("teams");
+            _opts = opts.Value;
             _logger = logger;
         }
 

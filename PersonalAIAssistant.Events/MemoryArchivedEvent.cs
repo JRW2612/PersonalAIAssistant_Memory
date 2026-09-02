@@ -1,5 +1,3 @@
-using System;
-
 namespace PersonalAIAssistant.Memory.Events
 {
     public class MemoryArchivedEvent : MemoryEvent

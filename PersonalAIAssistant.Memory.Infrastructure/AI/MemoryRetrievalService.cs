@@ -2,11 +2,6 @@ using Microsoft.Extensions.Logging;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.Persistence;
 using PersonalAIAssistant.Memory.Core.Models;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.AI
 {
@@ -38,10 +33,10 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
         public async Task<IReadOnlyList<RetrievedMemory>> RetrieveAsync(RetrievalRequest request, CancellationToken ct)
         {
             var start = DateTimeOffset.UtcNow;
-            
+
             // 1. Embed query
             var embedResult = await _embeddingService.GenerateEmbeddingAsync(request.QueryText, ct);
-            
+
             // Record metrics for embedding (mock cost for now)
             _metricsLogger.Record(new AiCallMetrics(
                 Provider: embedResult.Provider,

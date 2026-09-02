@@ -10,16 +10,18 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
     public class MongoEventStore : IEventStore
     {
         private readonly IMongoCollection<EventDocument> _collection;
+        private readonly IMongoCollection<OutboxDocument> _outboxCollection;
         private readonly IEncryptionService _encryptionService;
         private readonly Microsoft.Extensions.Options.IOptions<PersonalAIAssistant.Memory.Core.Models.EncryptionOptions> _encryptOptions;
 
         public MongoEventStore(
-            IMongoDatabase database, 
+            IMongoDatabase database,
             IEncryptionService encryptionService,
             Microsoft.Extensions.Options.IOptions<PersonalAIAssistant.Memory.Core.Models.EncryptionOptions> encryptOptions,
             string collectionName = "events")
         {
             _collection = database.GetCollection<EventDocument>(collectionName);
+            _outboxCollection = database.GetCollection<OutboxDocument>("outbox");
             _encryptionService = encryptionService;
             _encryptOptions = encryptOptions;
 
@@ -31,6 +33,9 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
                     .Ascending(d => d.Version);
                 _collection.Indexes.CreateOne(
                     new CreateIndexModel<EventDocument>(indexKeys, new CreateIndexOptions { Unique = true }));
+                // create index on outbox for quick querying of pending messages
+                var outboxKeys = Builders<OutboxDocument>.IndexKeys.Ascending(d => d.DispatchedAt).Ascending(d => d.OccurredAt);
+                _outboxCollection.Indexes.CreateOne(new CreateIndexModel<OutboxDocument>(outboxKeys));
             }
             catch (Exception ex)
             {
@@ -66,6 +71,72 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
             }
 
             await _collection.InsertManyAsync(docs, cancellationToken: ct);
+        }
+
+        public async Task<bool> AppendEventsWithOutboxAsync(string streamId, IReadOnlyList<MemoryEvent> events, int expectedVersion, IReadOnlyList<PersonalAIAssistant.Memory.Core.Messages.OutboxMessage>? outboxMessages, CancellationToken ct)
+        {
+            if ((events == null || events.Count == 0) && (outboxMessages == null || outboxMessages.Count == 0)) return true;
+
+            var client = _collection.Database.Client;
+            using var session = await client.StartSessionAsync(cancellationToken: ct);
+            try
+            {
+                session.StartTransaction();
+
+                if (events != null && events.Count > 0)
+                {
+                    var filter = Builders<EventDocument>.Filter.Eq(d => d.StreamId, streamId);
+                    var sort = Builders<EventDocument>.Sort.Descending(d => d.Version);
+                    var last = await _collection.Find(session, filter).Sort(sort).Limit(1).FirstOrDefaultAsync(ct);
+                    var currentVersion = last?.Version ?? 0;
+
+                    if (currentVersion != expectedVersion)
+                        throw new ConcurrencyException(
+                            $"Optimistic concurrency failure on stream '{streamId}': expected version {expectedVersion} but found {currentVersion}.");
+
+                    var docs = new List<EventDocument>();
+                    var version = currentVersion;
+                    foreach (var evt in events)
+                    {
+                        version++;
+                        evt.Version = version;
+                        evt.Timestamp = DateTime.UtcNow;
+                        docs.Add(EventDocument.FromMemoryEvent(streamId, evt, _encryptionService, _encryptOptions.Value));
+                    }
+
+                    if (docs.Count > 0)
+                        await _collection.InsertManyAsync(session, docs, cancellationToken: ct);
+                }
+
+                if (outboxMessages != null && outboxMessages.Count > 0)
+                {
+                    var outboxDocs = outboxMessages.Select(m => OutboxDocument.FromOutboxMessage(m)).ToList();
+                    await _outboxCollection.InsertManyAsync(session, outboxDocs, cancellationToken: ct);
+                }
+
+                await session.CommitTransactionAsync(cancellationToken: ct);
+                return true;
+            }
+            catch (MongoCommandException mce) when (mce.Message.Contains("transaction") || mce.Message.Contains("not supported"))
+            {
+                await session.AbortTransactionAsync(cancellationToken: ct);
+                // fallback to best-effort
+                if (events != null && events.Count > 0)
+                    await AppendEventsAsync(streamId, events, expectedVersion, ct);
+
+                if (outboxMessages != null && outboxMessages.Count > 0)
+                {
+                    var outboxDocs = outboxMessages.Select(m => OutboxDocument.FromOutboxMessage(m)).ToList();
+                    await _outboxCollection.InsertManyAsync(outboxDocs, cancellationToken: ct);
+                }
+
+                return true;
+            }
+            catch
+            {
+                await session.AbortTransactionAsync(cancellationToken: ct);
+                throw;
+            }
         }
 
         public async Task<IReadOnlyList<MemoryEvent>> GetEventsAsync(string streamId, CancellationToken ct)
@@ -181,6 +252,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
 
                 return evt;
             }
+
+
         }
     }
 }

@@ -1,10 +1,5 @@
 ﻿using FluentValidation;
 using MediatR;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace PersonalAIAssistant.Memory.Business.Behaviors
 {
@@ -17,7 +12,7 @@ namespace PersonalAIAssistant.Memory.Business.Behaviors
         }
         public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken cancellationToken)
         {
-            if(_validators.Any())
+            if (_validators.Any())
             {
                 var context = new ValidationContext<TRequest>(request);
 
@@ -32,7 +27,7 @@ namespace PersonalAIAssistant.Memory.Business.Behaviors
                     throw new ValidationException(validationResults);
                 }
             }
-          
+
             return await next(cancellationToken);
         }
     }

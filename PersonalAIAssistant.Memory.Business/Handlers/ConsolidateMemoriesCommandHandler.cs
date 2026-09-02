@@ -29,9 +29,9 @@ namespace PersonalAIAssistant.Memory.Business.Handlers
             ILogger<ConsolidateMemoriesCommandHandler> logger)
         {
             _eventStore = eventStore;
-            _eventBus   = eventBus;
-            _aiFactory  = aiFactory;
-            _logger     = logger;
+            _eventBus = eventBus;
+            _aiFactory = aiFactory;
+            _logger = logger;
         }
 
         public async Task<Guid> Handle(ConsolidateMemoriesCommand request, CancellationToken cancellationToken)
@@ -64,7 +64,7 @@ namespace PersonalAIAssistant.Memory.Business.Handlers
             }
 
             // ── 2. Build and persist the aggregate ───────────────────────────────
-            var newId     = request.NewMemoryId != Guid.Empty ? request.NewMemoryId : Guid.NewGuid();
+            var newId = request.NewMemoryId != Guid.Empty ? request.NewMemoryId : Guid.NewGuid();
             var aggregate = new MemoryAggregate(new MemoryId(newId));
 
             aggregate.Consolidate(

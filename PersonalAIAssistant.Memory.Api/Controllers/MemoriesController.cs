@@ -1,16 +1,11 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using PersonalAIAssistant.Memory.Api.DTOs;
 using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Business.Queries;
 using PersonalAIAssistant.Memory.Core.Domains.Enums;
 using PersonalAIAssistant.Memory.Core.Models;
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace PersonalAIAssistant.Memory.Api.Controllers
 {
@@ -87,7 +82,7 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
             var match = await _mediator.Send(query, ct);
 
             if (match == null) return NotFound($"Memory with ID '{id}' was not found.");
-            
+
             return Ok(match);
         }
 

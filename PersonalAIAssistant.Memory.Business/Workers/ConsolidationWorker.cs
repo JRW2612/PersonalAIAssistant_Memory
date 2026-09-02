@@ -1,7 +1,7 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.DependencyInjection;
 using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Exceptions;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
@@ -95,13 +95,13 @@ namespace PersonalAIAssistant.Memory.Business.Workers
                 var workerPipeline = _resilienceProvider.GetPipeline("WorkerRetry");
 
                 // 1. Compress/summarize text via LLM
-                var compressed = await aiPipeline.ExecuteAsync(async token => 
+                var compressed = await aiPipeline.ExecuteAsync(async token =>
                     await compressionService.CompressAsync(candidate.Text, token), ct);
 
                 // 2. Load aggregate history and apply domain logic
-                var history = await workerPipeline.ExecuteAsync(async token => 
+                var history = await workerPipeline.ExecuteAsync(async token =>
                     await eventStore.GetEventsAsync(candidate.StreamId, token), ct);
-                
+
                 var aggregate = new MemoryAggregate();
                 aggregate.LoadFromHistory(history);
 
@@ -111,7 +111,7 @@ namespace PersonalAIAssistant.Memory.Business.Workers
                 var newEvents = aggregate.UncommittedEvents.ToList();
                 var expectedVersion = aggregate.Version - newEvents.Count;
 
-                await workerPipeline.ExecuteAsync(async token => 
+                await workerPipeline.ExecuteAsync(async token =>
                 {
                     await eventStore.AppendEventsAsync(candidate.StreamId, newEvents, expectedVersion, token);
                     await eventBus.PublishAsync(newEvents, token);

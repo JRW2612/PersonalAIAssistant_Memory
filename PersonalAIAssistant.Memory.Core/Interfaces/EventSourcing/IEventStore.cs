@@ -47,5 +47,17 @@ namespace PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing
         Task<IReadOnlyList<(string StreamId, int CurrentVersion)>> GetStreamSummariesAsync(
             int limit,
             CancellationToken ct);
+
+        /// <summary>
+        /// Append events to a stream and atomically persist outbox messages alongside the events when supported by the backing store.
+        /// Implementations should strive to perform both inserts in a single transaction when possible so publishing is guaranteed
+        /// to be performed only for successfully persisted events.
+        /// </summary>
+        Task<bool> AppendEventsWithOutboxAsync(
+            string streamId,
+            IReadOnlyList<MemoryEvent> events,
+            int expectedVersion,
+            IReadOnlyList<PersonalAIAssistant.Memory.Core.Messages.OutboxMessage>? outboxMessages,
+            CancellationToken ct);
     }
 }

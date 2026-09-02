@@ -40,9 +40,9 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Gemini
             IAiMetricsLogger metrics,
             IAiGovernanceValidator governance)
         {
-            _http   = httpFactory.CreateClient("gemini");
-            _opts   = opts.Value.Gemini;
-            _polly  = polly;
+            _http = httpFactory.CreateClient("gemini");
+            _opts = opts.Value.Gemini;
+            _polly = polly;
             _logger = logger;
             _metrics = metrics;
             _governance = governance;
@@ -55,8 +55,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Gemini
 
             return await pipeline.ExecuteAsync(async token =>
             {
-                var model   = _opts.ConsolidationModel;
-                var url     = $"models/{model}:generateContent";
+                var model = _opts.ConsolidationModel;
+                var url = $"models/{model}:generateContent";
 
                 var requestBody = new GenerateRequest
                 {
@@ -64,7 +64,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Gemini
                     GenerationConfig = new GenerationConfig
                     {
                         MaxOutputTokens = _opts.MaxOutputTokens,
-                        Temperature     = _opts.Temperature
+                        Temperature = _opts.Temperature
                     }
                 };
 
@@ -119,7 +119,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Gemini
 
         private sealed class GenerateRequest
         {
-            public List<Content> Contents         { get; set; } = [];
+            public List<Content> Contents { get; set; } = [];
             public GenerationConfig? GenerationConfig { get; set; }
         }
 
@@ -136,7 +136,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Gemini
         private sealed class GenerationConfig
         {
             public int MaxOutputTokens { get; set; }
-            public double Temperature  { get; set; }
+            public double Temperature { get; set; }
         }
 
         private sealed class GenerateResponse

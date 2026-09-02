@@ -1,6 +1,4 @@
 using PersonalAIAssistant.Memory.Core.Domains.Enums;
-using System;
-using System.Collections.Generic;
 
 namespace PersonalAIAssistant.Memory.Core.Models
 {

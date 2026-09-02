@@ -1,20 +1,20 @@
 using Microsoft.EntityFrameworkCore;
 using PersonalAIAssistant.Memory.Core.Entities;
-using PersonalAIAssistant.Memory.Core.Models;
 using PersonalAIAssistant.Memory.Core.Interfaces.Persistence;
 using PersonalAIAssistant.Memory.Core.Interfaces.Security;
-using PersonalAIAssistant.Memory.Infrastructure.EF;
+using PersonalAIAssistant.Memory.Core.Models;
+using PersonalAIAssistant.Memory.Infrastructure.Context;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.Sql
 {
     /// <summary>
     /// Implements segregated persistence contracts for SQL read models, idempotency, locks, and retention queries.
     /// </summary>
-    public class SqlReadModelRepository : 
-        IReadModelRepository, 
-        IEventIdempotencyStore, 
-        IProcessingLockStore, 
-        IRetentionQueryStore, 
+    public class SqlReadModelRepository :
+        IReadModelRepository,
+        IEventIdempotencyStore,
+        IProcessingLockStore,
+        IRetentionQueryStore,
         ITransactionalReadModelRepository
     {
         private readonly ReadModelDbContext _db;

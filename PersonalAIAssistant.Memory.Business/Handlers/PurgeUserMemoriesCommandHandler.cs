@@ -2,7 +2,6 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Core.Domains;
-using PersonalAIAssistant.Memory.Core.Exceptions;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
 using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;

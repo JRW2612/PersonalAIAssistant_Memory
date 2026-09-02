@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace PersonalAIAssistant.Memory.Core.DTOs
+﻿namespace PersonalAIAssistant.Memory.Core.DTOs
 {
     /// <summary>
     /// A single match returned from a semantic (vector similarity) search.

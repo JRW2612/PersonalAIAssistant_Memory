@@ -1,24 +1,25 @@
+using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
+using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
 using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using PersonalAIAssistant.Memory.Core.Interfaces.Persistence;
-using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using PersonalAIAssistant.Memory.Core.Models;
-using PersonalAIAssistant.Memory.Infrastructure.Security;
+using PersonalAIAssistant.Memory.Events;
 using PersonalAIAssistant.Memory.Infrastructure.AI;
 using PersonalAIAssistant.Memory.Infrastructure.AI.Gemini;
 using PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi;
 using PersonalAIAssistant.Memory.Infrastructure.AI.Teams;
-using PersonalAIAssistant.Memory.Infrastructure.EF;
-using PersonalAIAssistant.Memory.Infrastructure.Sql;
+using PersonalAIAssistant.Memory.Infrastructure.Context;
 using PersonalAIAssistant.Memory.Infrastructure.Events;
+using PersonalAIAssistant.Memory.Infrastructure.Messaging;
 using PersonalAIAssistant.Memory.Infrastructure.Mongo;
-using PersonalAIAssistant.Memory.Events;
-using MassTransit;
+using PersonalAIAssistant.Memory.Infrastructure.Security;
+using PersonalAIAssistant.Memory.Infrastructure.Sql;
 using Qdrant.Client;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
@@ -31,8 +32,9 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             string mongoConnectionString,
             string mongoDatabaseName = "PersonalAIAssistantMemory")
         {
-            // Register EF Core Read Model DbContext & Segregated Repositories (ISP & DIP)
+            // Register EF Core Read Model DbContext & EventStoreDbContext
             services.AddDbContext<ReadModelDbContext>(configureDbContext);
+            services.AddDbContext<PersonalAIAssistant.Memory.Infrastructure.EF.EventStoreDbContext>(configureDbContext);
             services.AddScoped<SqlReadModelRepository>();
             services.AddScoped<IReadModelRepository>(sp => sp.GetRequiredService<SqlReadModelRepository>());
             services.AddScoped<IEventIdempotencyStore>(sp => sp.GetRequiredService<SqlReadModelRepository>());
@@ -47,8 +49,18 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
                 var client = sp.GetRequiredService<IMongoClient>();
                 return client.GetDatabase(mongoDatabaseName);
             });
-            services.AddSingleton<IEventStore, MongoEventStore>();
+            // Register Mongo implementations (kept as fallback)
+            services.AddSingleton<MongoEventStore>();
             services.AddSingleton<ISnapshotRepository, MongoSnapshotRepository>();
+            // Register outbox cleanup and default options
+            services.Configure<OutboxOptions>(options =>
+            {
+                // defaults are provided by OutboxOptions; callers may override via IConfiguration in Program.cs
+            });
+            services.AddHostedService<OutboxCleanupService>();
+
+            // Register EF-based event store implementation (scoped) — callers may override IEventStore registration to select provider
+            services.AddScoped<PersonalAIAssistant.Memory.Infrastructure.EF.EfEventStore>();
 
             return services;
         }
@@ -71,7 +83,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.Configure<OpenAiOptions>(configuration.GetSection(OpenAiOptions.SectionName));
             services.Configure<GeminiOptions>(configuration.GetSection(GeminiOptions.SectionName));
             services.Configure<TeamsOptions>(configuration.GetSection(TeamsOptions.SectionName));
-            
+
             services.Configure<ChunkingOptions>(configuration.GetSection("Chunking"));
             services.Configure<RetentionOptions>(configuration.GetSection(RetentionOptions.SectionName));
             services.Configure<EncryptionOptions>(configuration.GetSection(EncryptionOptions.SectionName));
@@ -83,13 +95,13 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.AddHttpClient("openai", client =>
             {
                 client.BaseAddress = new Uri("https://api.openai.com/v1/");
-                client.Timeout     = TimeSpan.FromSeconds(60);
+                client.Timeout = TimeSpan.FromSeconds(60);
             }).AddStandardResilienceHandler();
 
             services.AddHttpClient("gemini", client =>
             {
                 client.BaseAddress = new Uri("https://generativelanguage.googleapis.com/v1beta/");
-                client.Timeout     = TimeSpan.FromSeconds(60);
+                client.Timeout = TimeSpan.FromSeconds(60);
             }).AddStandardResilienceHandler();
 
             services.AddHttpClient("teams", client =>
@@ -171,6 +183,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
                 });
 
                 services.AddScoped<IEventBus, RabbitMQEventBus>();
+                // Outbox dispatcher will publish persisted outbox entries to the message broker (RabbitMQ via MassTransit)
+                services.AddHostedService<OutboxDispatcherService>();
             }
 
             return services;

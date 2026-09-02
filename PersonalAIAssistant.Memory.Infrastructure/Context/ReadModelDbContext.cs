@@ -2,7 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using PersonalAIAssistant.Memory.Core.Entities;
 
-namespace PersonalAIAssistant.Memory.Infrastructure.EF
+namespace PersonalAIAssistant.Memory.Infrastructure.Context
 {
     public class ReadModelDbContext : DbContext
     {

@@ -1,5 +1,3 @@
-using System;
-
 namespace PersonalAIAssistant.Memory.Core.Models
 {
     public sealed record AiCallMetrics(

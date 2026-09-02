@@ -1,5 +1,4 @@
 // PersonalAIAssistant.Memory.Core/Domains/MemoryAggregateFactory.cs
-using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.DTOs;
 using PersonalAIAssistant.Memory.Events;
 using System.Text.Json;

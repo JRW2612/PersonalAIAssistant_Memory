@@ -4,14 +4,14 @@ using Microsoft.Extensions.DependencyInjection;
 using PersonalAIAssistant.Memory.Business.Behaviors;
 using PersonalAIAssistant.Memory.Business.EventHandlers;
 using PersonalAIAssistant.Memory.Business.Projectors;
-using PersonalAIAssistant.Memory.Business.Workers;
 using PersonalAIAssistant.Memory.Business.Security;
+using PersonalAIAssistant.Memory.Business.Workers;
 using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using PersonalAIAssistant.Memory.Events;
-using System.Reflection;
 using Polly;
-using Polly.Retry;
 using Polly.CircuitBreaker;
+using Polly.Retry;
+using System.Reflection;
 
 namespace PersonalAIAssistant.Memory.Business.Extensions
 {

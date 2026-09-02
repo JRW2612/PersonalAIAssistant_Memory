@@ -1,5 +1,3 @@
-using System;
-
 namespace PersonalAIAssistant.Memory.Api.DTOs
 {
     /// <summary>

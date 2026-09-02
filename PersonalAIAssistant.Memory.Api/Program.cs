@@ -2,8 +2,9 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using PersonalAIAssistant.Memory.Api.Middleware;
+using MongoDB.Driver;
 using PersonalAIAssistant.Memory.Api.Extensions;
+using PersonalAIAssistant.Memory.Api.Middleware;
 using PersonalAIAssistant.Memory.Business.Extensions;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
@@ -98,9 +99,9 @@ builder.Services.AddCors(options =>
 
 // 4. Register Infrastructure Services (EF Core PostgreSQL/InMemory, MongoDB/InMemory, Qdrant, MassTransit/RabbitMQ)
 var useInMemory = builder.Configuration.GetValue<bool>("UseInMemoryStore", true);
-var postgresConn = builder.Configuration.GetConnectionString("PostgresReadModel") 
+var postgresConn = builder.Configuration.GetConnectionString("PostgresReadModel")
     ?? "Host=localhost;Database=PersonalAiMemoryReadDb;Username=postgres;Password=postgres";
-var mongoConn = builder.Configuration.GetConnectionString("MongoEventStore") 
+var mongoConn = builder.Configuration.GetConnectionString("MongoEventStore")
     ?? "mongodb://localhost:27017";
 
 builder.Services.AddMemoryInfrastructureServices(
@@ -121,12 +122,22 @@ builder.Services.AddMemoryInfrastructureServices(
 );
 builder.Services.AddAiProviders(builder.Configuration);
 
+// Bind Outbox options (cleanup retention and interval)
+builder.Services.Configure<PersonalAIAssistant.Memory.Infrastructure.Messaging.OutboxOptions>(builder.Configuration.GetSection("Outbox"));
+
 if (useInMemory)
 {
     builder.Services.AddSingleton<IEventStore, PersonalAIAssistant.Memory.Infrastructure.Mongo.InMemoryEventStore>();
     builder.Services.AddSingleton<ISnapshotRepository, PersonalAIAssistant.Memory.Infrastructure.Mongo.InMemorySnapshotRepository>();
     builder.Services.AddScoped<IEventBus, PersonalAIAssistant.Memory.Infrastructure.InMemory.InMemoryEventBus>();
     builder.Services.AddSingleton<IVectorMemoryRepository, PersonalAIAssistant.Memory.Infrastructure.InMemory.InMemoryVectorMemoryRepository>();
+}
+else
+{
+    // Use EF-based event store for production mode (transactional events + EF outbox)
+    builder.Services.AddScoped<IEventStore, PersonalAIAssistant.Memory.Infrastructure.EF.EfEventStore>();
+    // Register hosted service that dispatches EF outbox messages to MassTransit (RabbitMQ)
+    builder.Services.AddHostedService<PersonalAIAssistant.Memory.Infrastructure.EF.EfOutboxDispatcherService>();
 }
 
 // 5. Register Business Layer Services & Pipeline Behaviors (Logging, Validation, Authorization)
@@ -157,5 +168,51 @@ app.UseObservabilityEndpoints();
 
 app.MapGet("/", () => Results.Redirect("/swagger"));
 app.MapControllers();
+
+// Outbox health endpoint: reports pending counts and last dispatched times for EF and Mongo outboxes
+app.MapGet("/health/outbox", async (IServiceProvider sp) =>
+{
+    using var scope = sp.CreateScope();
+
+    var efDb = scope.ServiceProvider.GetService(typeof(PersonalAIAssistant.Memory.Infrastructure.EF.EventStoreDbContext)) as PersonalAIAssistant.Memory.Infrastructure.EF.EventStoreDbContext;
+    var mongoDb = scope.ServiceProvider.GetService(typeof(IMongoDatabase)) as IMongoDatabase;
+
+    var result = new System.Collections.Generic.Dictionary<string, object?>();
+
+    if (efDb != null)
+    {
+        try
+        {
+            var pending = await efDb.OutboxMessages.CountAsync(o => o.DispatchedAt == null);
+            var lastDispatched = await efDb.OutboxMessages.Where(o => o.DispatchedAt != null).OrderByDescending(o => o.DispatchedAt).Select(o => o.DispatchedAt).FirstOrDefaultAsync();
+            result["ef"] = new { pending, lastDispatched };
+        }
+        catch (Exception ex)
+        {
+            result["ef"] = new { error = ex.Message };
+        }
+    }
+
+    if (mongoDb != null)
+    {
+        try
+        {
+            var coll = mongoDb.GetCollection<PersonalAIAssistant.Memory.Infrastructure.Mongo.OutboxDocument>("outbox");
+            var pending = await coll.CountDocumentsAsync(Builders<PersonalAIAssistant.Memory.Infrastructure.Mongo.OutboxDocument>.Filter.Eq(d => d.DispatchedAt, null as DateTime?), cancellationToken: default);
+            var last = await coll.Find(Builders<PersonalAIAssistant.Memory.Infrastructure.Mongo.OutboxDocument>.Filter.Ne(d => d.DispatchedAt, null as DateTime?))
+                                .SortByDescending(d => d.DispatchedAt)
+                                .Limit(1)
+                                .Project(d => d.DispatchedAt)
+                                .FirstOrDefaultAsync();
+            result["mongo"] = new { pending, lastDispatched = last };
+        }
+        catch (Exception ex)
+        {
+            result["mongo"] = new { error = ex.Message };
+        }
+    }
+
+    return Results.Json(result);
+});
 
 app.Run();

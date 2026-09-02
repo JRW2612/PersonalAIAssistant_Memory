@@ -1,5 +1,4 @@
 using PersonalAIAssistant.Memory.Core.Domains.Enums;
-using System.Collections.Generic;
 
 namespace PersonalAIAssistant.Memory.Api.DTOs
 {

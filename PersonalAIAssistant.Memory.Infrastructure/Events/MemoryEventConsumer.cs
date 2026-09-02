@@ -1,10 +1,8 @@
 using MassTransit;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using PersonalAIAssistant.Memory.Events;
 using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
-using System;
-using System.Threading.Tasks;
+using PersonalAIAssistant.Memory.Events;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.Events
 {

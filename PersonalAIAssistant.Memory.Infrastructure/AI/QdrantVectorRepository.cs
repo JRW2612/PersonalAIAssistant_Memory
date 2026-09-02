@@ -6,11 +6,6 @@ using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Models;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.AI
 {

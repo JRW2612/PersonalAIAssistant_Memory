@@ -1,11 +1,10 @@
+using MediatR;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using MediatR;
 using PersonalAIAssistant.Memory.Business.Commands;
-using PersonalAIAssistant.Memory.Core.Domains.Enums;
 using PersonalAIAssistant.Memory.Business.Extensions;
+using PersonalAIAssistant.Memory.Core.Domains.Enums;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
 using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
@@ -27,12 +26,12 @@ builder.Services.AddAiProviders(builder.Configuration);
 
 // 3. Configure Business Layer (including Polly Resilience Pipelines and Workers)
 builder.Services.AddMemoryBusinessServices(
-    configureConsolidation: opts => 
+    configureConsolidation: opts =>
     {
         opts.BatchSize = 5;
         opts.PollInterval = TimeSpan.FromSeconds(10);
     },
-    configureSnapshot: opts => 
+    configureSnapshot: opts =>
     {
         opts.BatchSize = 10;
         opts.PollInterval = TimeSpan.FromSeconds(30);
@@ -56,7 +55,7 @@ Console.WriteLine("Host built successfully. Starting workers...");
 _ = Task.Run(async () =>
 {
     await Task.Delay(2000);
-    
+
     using var scope = host.Services.CreateScope();
     var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
@@ -73,10 +72,10 @@ _ = Task.Run(async () =>
     {
         var memoryId = await mediator.Send(addCommand);
         Console.WriteLine($"[DEMO] Successfully added memory! Aggregate ID: {memoryId}");
-        
+
         Console.WriteLine("\n[DEMO] Dispatching a DeleteMemoryCommand (Authorized Request)...");
         var deleteCommand = new DeleteMemoryCommand(memoryId, "Demo Cleanup", "user-123");
-        
+
         await mediator.Send(deleteCommand);
         Console.WriteLine("[DEMO] Successfully processed Delete request. Authorization passed.");
     }
@@ -100,9 +99,9 @@ class MockEmbeddingService : IEmbeddingService
     public Task<PersonalAIAssistant.Memory.Core.DTOs.EmbeddingResult> GenerateEmbeddingAsync(string text, CancellationToken ct)
         => Task.FromResult(new PersonalAIAssistant.Memory.Core.DTOs.EmbeddingResult(
             EmbeddingId: Guid.NewGuid().ToString(),
-            Vector:      new float[1536],
-            Provider:    "mock",
-            Model:       "mock-model"));
+            Vector: new float[1536],
+            Provider: "mock",
+            Model: "mock-model"));
 }
 
 class MockVectorRepo : IVectorMemoryRepository

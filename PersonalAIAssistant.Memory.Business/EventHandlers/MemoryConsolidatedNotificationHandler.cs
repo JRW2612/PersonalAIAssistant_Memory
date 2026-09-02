@@ -1,9 +1,6 @@
 using Microsoft.Extensions.Logging;
 using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using PersonalAIAssistant.Memory.Events;
-using System;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace PersonalAIAssistant.Memory.Business.EventHandlers
 {

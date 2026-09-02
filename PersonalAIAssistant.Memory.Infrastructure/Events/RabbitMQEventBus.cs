@@ -1,9 +1,6 @@
 using MassTransit;
-using PersonalAIAssistant.Memory.Events;
 using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
+using PersonalAIAssistant.Memory.Events;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.Events
 {

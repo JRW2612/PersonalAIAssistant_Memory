@@ -1,18 +1,14 @@
 using PersonalAIAssistant.Memory.Core.Exceptions;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
 using PersonalAIAssistant.Memory.Events;
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
 {
     public class InMemoryEventStore : IEventStore
     {
         private readonly ConcurrentDictionary<string, List<MemoryEvent>> _streams = new();
+        private readonly ConcurrentBag<PersonalAIAssistant.Memory.Core.Messages.OutboxMessage> _outbox = new();
 
         public Task AppendEventAsync(string streamId, MemoryEvent memoryEvent, int expectedVersion, CancellationToken ct)
         {
@@ -63,6 +59,20 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
                 });
 
             return Task.CompletedTask;
+        }
+
+        public async Task<bool> AppendEventsWithOutboxAsync(string streamId, IReadOnlyList<MemoryEvent> events, int expectedVersion, IReadOnlyList<PersonalAIAssistant.Memory.Core.Messages.OutboxMessage>? outboxMessages, CancellationToken ct)
+        {
+            await AppendEventsAsync(streamId, events, expectedVersion, ct);
+
+            // Store outbox messages in-memory for tests or demo scenarios
+            if (outboxMessages != null)
+            {
+                foreach (var m in outboxMessages)
+                    _outbox.Add(m);
+            }
+
+            return true;
         }
 
         public Task<IReadOnlyList<MemoryEvent>> GetEventsAsync(string streamId, CancellationToken ct)

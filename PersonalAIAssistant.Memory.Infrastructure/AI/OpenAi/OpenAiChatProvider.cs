@@ -40,9 +40,9 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi
             IAiMetricsLogger metrics,
             IAiGovernanceValidator governance)
         {
-            _http   = httpFactory.CreateClient("openai");
-            _opts   = opts.Value.OpenAi;
-            _polly  = polly;
+            _http = httpFactory.CreateClient("openai");
+            _opts = opts.Value.OpenAi;
+            _polly = polly;
             _logger = logger;
             _metrics = metrics;
             _governance = governance;
@@ -57,9 +57,9 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi
             {
                 var request = new ChatRequest
                 {
-                    Model    = _opts.ConsolidationModel,
+                    Model = _opts.ConsolidationModel,
                     Messages = [new ChatMessage { Role = "user", Content = prompt }],
-                    MaxTokens   = _opts.MaxTokens,
+                    MaxTokens = _opts.MaxTokens,
                     Temperature = _opts.Temperature
                 };
 
@@ -124,14 +124,14 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi
 
         private sealed class ChatMessage
         {
-            public string Role    { get; set; } = "";
+            public string Role { get; set; } = "";
             public string Content { get; set; } = "";
         }
 
         private sealed class ChatResponse
         {
             public List<Choice>? Choices { get; set; }
-            public UsageInfo?    Usage   { get; set; }
+            public UsageInfo? Usage { get; set; }
         }
 
         private sealed class Choice

@@ -1,13 +1,7 @@
 using FluentValidation;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging;
 using PersonalAIAssistant.Memory.Core.Exceptions;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Text.Json;
-using System.Threading.Tasks;
 
 namespace PersonalAIAssistant.Memory.Api.Middleware
 {
@@ -27,7 +21,7 @@ namespace PersonalAIAssistant.Memory.Api.Middleware
         }
 
         public async Task InvokeAsync(HttpContext context)
-            {
+        {
             try
             {
                 await _next(context);

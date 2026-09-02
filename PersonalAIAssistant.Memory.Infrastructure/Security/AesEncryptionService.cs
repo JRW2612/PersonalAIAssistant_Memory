@@ -1,6 +1,4 @@
 using PersonalAIAssistant.Memory.Core.Interfaces.Security;
-using System;
-using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -20,7 +18,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Security
 
             using var encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
             using var ms = new MemoryStream();
-            
+
             // Prepend IV to the stream
             ms.Write(aes.IV, 0, aes.IV.Length);
 

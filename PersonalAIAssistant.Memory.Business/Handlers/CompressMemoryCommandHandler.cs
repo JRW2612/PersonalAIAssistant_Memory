@@ -26,10 +26,10 @@ namespace PersonalAIAssistant.Memory.Business.Handlers
             ICompressionService compressionService,
             ILogger<CompressMemoryCommandHandler> logger)
         {
-            _eventStore         = eventStore;
-            _eventBus           = eventBus;
+            _eventStore = eventStore;
+            _eventBus = eventBus;
             _compressionService = compressionService;
-            _logger             = logger;
+            _logger = logger;
         }
 
         public async Task<Guid> Handle(CompressMemoryCommand request, CancellationToken cancellationToken)
@@ -45,17 +45,17 @@ namespace PersonalAIAssistant.Memory.Business.Handlers
             aggregate.LoadFromHistory(eventHistory);
 
             // ── 2. Determine compressed text ─────────────────────────────────────
-            var compressedText   = request.CompressedText;
+            var compressedText = request.CompressedText;
             var compressionModel = request.CompressionModel;
-            var tokenCount       = request.TokenCount;
+            var tokenCount = request.TokenCount;
 
             if (string.IsNullOrWhiteSpace(compressedText))
             {
                 var textToCompress = aggregate.CompressedText ?? aggregate.RawText;
                 var result = await _compressionService.CompressAsync(textToCompress, cancellationToken);
-                compressedText   = result.Text;
+                compressedText = result.Text;
                 compressionModel = result.Model;
-                tokenCount       = result.TokenCount;
+                tokenCount = result.TokenCount;
             }
 
             // ── 3. Apply and persist ─────────────────────────────────────────────

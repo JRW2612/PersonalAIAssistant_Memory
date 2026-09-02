@@ -54,7 +54,7 @@ namespace PersonalAIAssistant.Memory.Business.Workers
                         {
                             var workerPipeline = _resilienceProvider.GetPipeline("WorkerRetry");
 
-                            await workerPipeline.ExecuteAsync(async token => 
+                            await workerPipeline.ExecuteAsync(async token =>
                             {
                                 var snapshot = await _snapshotRepo.GetLatestSnapshotAsync(streamId, token);
                                 var fromVersion = snapshot?.Version ?? 0;

@@ -1,13 +1,8 @@
+using PersonalAIAssistant.Memory.Core.Domains.Enums;
 using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using PersonalAIAssistant.Memory.Core.Interfaces.Persistence;
 using PersonalAIAssistant.Memory.Core.Models;
-using PersonalAIAssistant.Memory.Core.Domains.Enums;
 using PersonalAIAssistant.Memory.Events;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace PersonalAIAssistant.Memory.Business.Projectors
 {
@@ -215,14 +210,14 @@ namespace PersonalAIAssistant.Memory.Business.Projectors
 
             switch (evt)
             {
-                case MemoryAddedEvent added:           await Handle(added, ct);         break;
-                case MemoryUpdatedEvent updated:       await Handle(updated, ct);       break;
-                case MemoryCompressedEvent compressed: await Handle(compressed, ct);    break;
-                case MemoryConsolidatedEvent consol:   await Handle(consol, ct);        break;
-                case MemoryIndexedEvent indexed:       await Handle(indexed, ct);       break;
-                case MemoryArchivedEvent archived:     await Handle(archived, ct);      break;
-                case MemoryDeletedEvent deleted:       await Handle(deleted, ct);       break;
-                case SnapshotCreatedEvent snapshot:    await Handle(snapshot, ct);      break;
+                case MemoryAddedEvent added: await Handle(added, ct); break;
+                case MemoryUpdatedEvent updated: await Handle(updated, ct); break;
+                case MemoryCompressedEvent compressed: await Handle(compressed, ct); break;
+                case MemoryConsolidatedEvent consol: await Handle(consol, ct); break;
+                case MemoryIndexedEvent indexed: await Handle(indexed, ct); break;
+                case MemoryArchivedEvent archived: await Handle(archived, ct); break;
+                case MemoryDeletedEvent deleted: await Handle(deleted, ct); break;
+                case SnapshotCreatedEvent snapshot: await Handle(snapshot, ct); break;
                 default:
                     await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
                     break;

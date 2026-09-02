@@ -2,10 +2,6 @@ using MediatR;
 using PersonalAIAssistant.Memory.Business.Queries;
 using PersonalAIAssistant.Memory.Core.Interfaces.Persistence;
 using PersonalAIAssistant.Memory.Core.Models;
-using System;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace PersonalAIAssistant.Memory.Business.Handlers
 {
@@ -21,10 +17,10 @@ namespace PersonalAIAssistant.Memory.Business.Handlers
         public async Task<MemoryReadModel?> Handle(GetMemoryByIdQuery request, CancellationToken cancellationToken)
         {
             var models = await _readRepo.GetMemoriesByIdsAsync(new[] { request.MemoryId }, cancellationToken);
-            
-            var match = models.FirstOrDefault(m => 
-                string.Equals(m.UserId, request.UserId, StringComparison.OrdinalIgnoreCase) || 
-                string.IsNullOrEmpty(m.UserId) || 
+
+            var match = models.FirstOrDefault(m =>
+                string.Equals(m.UserId, request.UserId, StringComparison.OrdinalIgnoreCase) ||
+                string.IsNullOrEmpty(m.UserId) ||
                 string.Equals(request.UserId, "anonymous-user", StringComparison.OrdinalIgnoreCase));
 
             return match;

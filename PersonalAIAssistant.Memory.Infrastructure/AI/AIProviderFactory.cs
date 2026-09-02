@@ -19,7 +19,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
             IOptions<AiProviderOptions> opts)
         {
             _providers = providers;
-            _opts      = opts.Value;
+            _opts = opts.Value;
         }
 
         /// <inheritdoc />

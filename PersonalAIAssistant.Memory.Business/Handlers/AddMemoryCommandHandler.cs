@@ -88,7 +88,16 @@ namespace PersonalAIAssistant.Memory.Business.Handlers
 
                 var streamId = $"memory-{aggregate.Id.Value}";
 
-                await _eventStore.AppendEventsAsync(streamId, uncommittedEvents, 0, cancellationToken);
+                // Create outbox messages for each event so they can be published reliably by the outbox dispatcher
+                var outboxMessages = uncommittedEvents.Select(evt => new PersonalAIAssistant.Memory.Core.Messages.OutboxMessage
+                {
+                    MessageId = evt.EventId,
+                    MessageType = evt.GetType().Name,
+                    Payload = System.Text.Json.JsonSerializer.Serialize(evt, evt.GetType()),
+                    OccurredAt = DateTime.UtcNow
+                }).ToList();
+
+                await _eventStore.AppendEventsWithOutboxAsync(streamId, uncommittedEvents, 0, outboxMessages, cancellationToken);
                 allEvents.AddRange(uncommittedEvents);
 
                 aggregate.ClearUncommittedEvents();
@@ -99,10 +108,7 @@ namespace PersonalAIAssistant.Memory.Business.Handlers
                 }
             }
 
-            if (allEvents.Any())
-            {
-                await _eventBus.PublishAsync(allEvents, cancellationToken);
-            }
+            // Events are persisted and outbox entries created. A background outbox dispatcher will publish them to RabbitMQ.
 
             return firstAggregateId == Guid.Empty ? Guid.NewGuid() : firstAggregateId;
         }

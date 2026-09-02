@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Http;
 using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using System.Security.Claims;
 

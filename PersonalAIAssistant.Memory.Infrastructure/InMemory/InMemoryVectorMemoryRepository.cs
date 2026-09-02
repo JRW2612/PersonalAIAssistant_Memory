@@ -1,11 +1,6 @@
 using PersonalAIAssistant.Memory.Core.DTOs;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.InMemory
 {
