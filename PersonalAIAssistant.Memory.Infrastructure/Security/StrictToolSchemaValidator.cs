@@ -1,6 +1,6 @@
+using System.Text.Json;
 using PersonalAIAssistant.Memory.Core.Exceptions;
 using PersonalAIAssistant.Memory.Core.Interfaces.Security;
-using System.Text.Json;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.Security;
 
@@ -17,19 +17,26 @@ public sealed class StrictToolSchemaValidator : IToolSchemaValidator
         {
             ["memory.add"] = new Dictionary<string, Field>(StringComparer.OrdinalIgnoreCase)
             {
-                ["rawText"] = new(JsonValueKind.String, true), ["source"] = new(JsonValueKind.String, true),
-                ["tags"] = new(JsonValueKind.Array, true, JsonValueKind.String), ["userId"] = new(JsonValueKind.String, true),
-                ["importance"] = new(JsonValueKind.Number), ["correlationId"] = new(JsonValueKind.String)
+                ["rawText"] = new(JsonValueKind.String, true),
+                ["source"] = new(JsonValueKind.String, true),
+                ["tags"] = new(JsonValueKind.Array, true, JsonValueKind.String),
+                ["userId"] = new(JsonValueKind.String, true),
+                ["importance"] = new(JsonValueKind.Number),
+                ["correlationId"] = new(JsonValueKind.String)
             },
             ["memory.update"] = new Dictionary<string, Field>(StringComparer.OrdinalIgnoreCase)
             {
-                ["memoryId"] = new(JsonValueKind.String, true), ["userId"] = new(JsonValueKind.String, true),
-                ["updatedFields"] = new(JsonValueKind.Object), ["tenantId"] = new(JsonValueKind.String)
+                ["memoryId"] = new(JsonValueKind.String, true),
+                ["userId"] = new(JsonValueKind.String, true),
+                ["updatedFields"] = new(JsonValueKind.Object),
+                ["tenantId"] = new(JsonValueKind.String)
             },
             ["memory.consolidate"] = new Dictionary<string, Field>(StringComparer.OrdinalIgnoreCase)
             {
-                ["newMemoryId"] = new(JsonValueKind.String, true), ["mergedMemoryIds"] = new(JsonValueKind.Array, true, JsonValueKind.String),
-                ["consolidatedText"] = new(JsonValueKind.String, true), ["userId"] = new(JsonValueKind.String, true),
+                ["newMemoryId"] = new(JsonValueKind.String, true),
+                ["mergedMemoryIds"] = new(JsonValueKind.Array, true, JsonValueKind.String),
+                ["consolidatedText"] = new(JsonValueKind.String, true),
+                ["userId"] = new(JsonValueKind.String, true),
                 ["provenanceLinks"] = new(JsonValueKind.Array, true, JsonValueKind.String)
             }
         };

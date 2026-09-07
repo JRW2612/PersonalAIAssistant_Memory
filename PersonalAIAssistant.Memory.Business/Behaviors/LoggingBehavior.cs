@@ -1,7 +1,7 @@
+using System.Diagnostics;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using PersonalAIAssistant.Memory.Core.Interfaces.Common;
-using System.Diagnostics;
 
 namespace PersonalAIAssistant.Memory.Business.Behaviors;
 

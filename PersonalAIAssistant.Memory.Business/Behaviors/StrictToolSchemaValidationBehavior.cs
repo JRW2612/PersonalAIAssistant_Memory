@@ -1,7 +1,7 @@
+using System.Text.Json;
 using MediatR;
 using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Core.Interfaces.Security;
-using System.Text.Json;
 
 namespace PersonalAIAssistant.Memory.Business.Behaviors;
 

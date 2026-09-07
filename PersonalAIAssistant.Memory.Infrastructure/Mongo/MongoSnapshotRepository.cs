@@ -1,7 +1,7 @@
+using System.Text.Json;
 using MongoDB.Driver;
 using PersonalAIAssistant.Memory.Core.DTOs;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
-using System.Text.Json;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
 {

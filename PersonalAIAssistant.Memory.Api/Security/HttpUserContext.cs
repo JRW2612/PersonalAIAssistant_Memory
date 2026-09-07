@@ -1,5 +1,5 @@
-using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using System.Security.Claims;
+using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 
 namespace PersonalAIAssistant.Memory.Api.Security;
 

@@ -1,9 +1,9 @@
+using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using PersonalAIAssistant.Memory.Api.DTOs;
 using PersonalAIAssistant.Memory.Core.Entities;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.Security;
-using System.Diagnostics;
 
 namespace PersonalAIAssistant.Memory.Api.Controllers
 {

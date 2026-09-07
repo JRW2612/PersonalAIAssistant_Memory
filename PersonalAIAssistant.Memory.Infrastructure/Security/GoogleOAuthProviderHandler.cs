@@ -1,8 +1,8 @@
+using System.Net.Http.Json;
+using System.Security.Cryptography;
 using Microsoft.Extensions.Options;
 using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using PersonalAIAssistant.Memory.Core.Models;
-using System.Net.Http.Json;
-using System.Security.Cryptography;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.Security;
 
@@ -25,9 +25,13 @@ public sealed class GoogleOAuthProviderHandler : IOAuthProviderHandler
         EnsureConfigured();
         var query = new Dictionary<string, string>
         {
-            ["client_id"] = _options.Google.ClientId, ["redirect_uri"] = redirectUri, ["response_type"] = "code",
-            ["scope"] = string.Join(' ', _options.Google.OAuthScopes), ["state"] = state,
-            ["access_type"] = "offline", ["prompt"] = "consent"
+            ["client_id"] = _options.Google.ClientId,
+            ["redirect_uri"] = redirectUri,
+            ["response_type"] = "code",
+            ["scope"] = string.Join(' ', _options.Google.OAuthScopes),
+            ["state"] = state,
+            ["access_type"] = "offline",
+            ["prompt"] = "consent"
         };
         return "https://accounts.google.com/o/oauth2/v2/auth?" + string.Join('&', query.Select(p => $"{Uri.EscapeDataString(p.Key)}={Uri.EscapeDataString(p.Value)}"));
     }
@@ -38,8 +42,11 @@ public sealed class GoogleOAuthProviderHandler : IOAuthProviderHandler
         EnsureConfigured();
         var response = await _http.PostAsync("token", new FormUrlEncodedContent(new Dictionary<string, string>
         {
-            ["code"] = code, ["client_id"] = _options.Google.ClientId, ["client_secret"] = _options.Google.ClientSecret,
-            ["redirect_uri"] = redirectUri, ["grant_type"] = "authorization_code"
+            ["code"] = code,
+            ["client_id"] = _options.Google.ClientId,
+            ["client_secret"] = _options.Google.ClientSecret,
+            ["redirect_uri"] = redirectUri,
+            ["grant_type"] = "authorization_code"
         }), ct);
         response.EnsureSuccessStatusCode();
         var token = await response.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken: ct) ?? throw new InvalidOperationException("Google returned an empty token response.");
@@ -52,7 +59,10 @@ public sealed class GoogleOAuthProviderHandler : IOAuthProviderHandler
         EnsureConfigured();
         var response = await _http.PostAsync("token", new FormUrlEncodedContent(new Dictionary<string, string>
         {
-            ["refresh_token"] = refreshToken, ["client_id"] = _options.Google.ClientId, ["client_secret"] = _options.Google.ClientSecret, ["grant_type"] = "refresh_token"
+            ["refresh_token"] = refreshToken,
+            ["client_id"] = _options.Google.ClientId,
+            ["client_secret"] = _options.Google.ClientSecret,
+            ["grant_type"] = "refresh_token"
         }), ct);
         if (!response.IsSuccessStatusCode) return null;
         var token = await response.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken: ct);

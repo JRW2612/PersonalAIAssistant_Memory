@@ -1,8 +1,8 @@
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using PersonalAIAssistant.Memory.Core.Models;
-using System.Text.RegularExpressions;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.Security
 {

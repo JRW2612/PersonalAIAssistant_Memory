@@ -1,7 +1,7 @@
+using System.Text.RegularExpressions;
 using FluentValidation;
 using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Core.Interfaces.Security;
-using System.Text.RegularExpressions;
 
 namespace PersonalAIAssistant.Memory.Business.Validators;
 

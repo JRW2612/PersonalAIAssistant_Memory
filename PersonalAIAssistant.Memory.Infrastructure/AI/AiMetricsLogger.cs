@@ -1,7 +1,7 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Models;
-using System.Collections.Concurrent;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.AI
 {

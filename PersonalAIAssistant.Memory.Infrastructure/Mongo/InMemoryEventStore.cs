@@ -1,7 +1,7 @@
+using System.Collections.Concurrent;
 using PersonalAIAssistant.Memory.Core.Exceptions;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
 using PersonalAIAssistant.Memory.Events;
-using System.Collections.Concurrent;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
 {

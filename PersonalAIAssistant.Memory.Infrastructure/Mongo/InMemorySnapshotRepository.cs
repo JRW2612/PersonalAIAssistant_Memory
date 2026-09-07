@@ -1,7 +1,7 @@
-using PersonalAIAssistant.Memory.Core.DTOs;
-using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
 using System.Collections.Concurrent;
 using System.Text.Json;
+using PersonalAIAssistant.Memory.Core.DTOs;
+using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
 {

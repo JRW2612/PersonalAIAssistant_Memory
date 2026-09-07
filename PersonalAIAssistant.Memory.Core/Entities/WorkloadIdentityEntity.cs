@@ -27,15 +27,15 @@ namespace PersonalAIAssistant.Memory.Core.Entities
         public WorkloadAuthType AuthType { get; set; } = WorkloadAuthType.OidcWorkloadIdentity;
         public string TenantId { get; set; } = "default";
         public string AllowedScopes { get; set; } = "ai.memory.read ai.memory.write";
-        
+
         // For ClientCredentials M2M grant
         public string? HashedSecret { get; set; }
-        
+
         // For OIDC Workload Identity Federation (GitHub Actions, AWS IAM, Azure Managed ID, GCP SA)
         public string? OidcIssuer { get; set; }
         public string? OidcAudience { get; set; }
         public string? OidcSubjectFilter { get; set; } // Supports wildcards, e.g. "repo:my-org/*" or ARN / SPN
-        
+
         // For Webhook HMAC signature verification
         public string? EncryptedWebhookSecret { get; set; }
 

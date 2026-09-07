@@ -1,3 +1,4 @@
+using System.Reflection;
 using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,7 +12,6 @@ using PersonalAIAssistant.Memory.Events;
 using Polly;
 using Polly.CircuitBreaker;
 using Polly.Retry;
-using System.Reflection;
 
 namespace PersonalAIAssistant.Memory.Business.Extensions;
 

@@ -1,7 +1,7 @@
-using FluentValidation;
-using PersonalAIAssistant.Memory.Core.Exceptions;
 using System.Net;
 using System.Text.Json;
+using FluentValidation;
+using PersonalAIAssistant.Memory.Core.Exceptions;
 
 namespace PersonalAIAssistant.Memory.Api.Middleware;
 

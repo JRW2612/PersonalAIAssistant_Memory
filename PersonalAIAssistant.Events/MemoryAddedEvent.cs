@@ -1,4 +1,5 @@
 namespace PersonalAIAssistant.Memory.Events;
+
 public class MemoryAddedEvent : MemoryEvent
 {
     public string RawText { get; set; } = string.Empty;
