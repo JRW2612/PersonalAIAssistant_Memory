@@ -59,11 +59,13 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Messaging
                             _logger.LogWarning(ex, "EF outbox cleanup failed");
                         }
 
-                        // If we have a Mongo outbox, delete old dispatched documents from the 'outbox' collection.
-                        // Same idea here: keep the collection size reasonable.
+                        // If we have a Mongo outbox and are not using in-memory store, delete old dispatched documents.
                         try
                         {
-                            var mongoDb = scope.ServiceProvider.GetService(typeof(IMongoDatabase)) as IMongoDatabase;
+                            var config = scope.ServiceProvider.GetService(typeof(Microsoft.Extensions.Configuration.IConfiguration)) as Microsoft.Extensions.Configuration.IConfiguration;
+                            var useInMemory = string.Equals(config?["UseInMemoryStore"], "true", StringComparison.OrdinalIgnoreCase);
+
+                            var mongoDb = !useInMemory ? scope.ServiceProvider.GetService(typeof(IMongoDatabase)) as IMongoDatabase : null;
                             if (mongoDb != null)
                             {
                                 var collection = mongoDb.GetCollection<OutboxDocument>("outbox");
