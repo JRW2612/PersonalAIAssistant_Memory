@@ -24,6 +24,8 @@ public sealed class HttpUserContext : IUserContext
 
         UserId = user?.FindFirstValue(ClaimTypes.NameIdentifier)
               ?? user?.FindFirstValue("sub")
+              ?? user?.FindFirstValue("client_id")
+              ?? user?.FindFirstValue("workload_id")
               ?? user?.FindFirstValue(ClaimTypes.Name)
               ?? string.Empty;
 
