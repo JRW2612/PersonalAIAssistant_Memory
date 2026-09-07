@@ -187,5 +187,16 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Security
             var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(payload));
             return Convert.ToHexString(hash).ToLowerInvariant();
         }
+
+        private static byte[] Base64UrlDecode(string input)
+        {
+            var output = input.Replace("-", "+").Replace("_", "/");
+            switch (output.Length % 4)
+            {
+                case 2: output += "=="; break;
+                case 3: output += "="; break;
+            }
+            return Convert.FromBase64String(output);
+        }
     }
 }
