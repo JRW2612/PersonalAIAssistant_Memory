@@ -27,6 +27,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
             {
                 try
                 {
+                    // Grab a small batch of pending outbox messages ordered by when they happened.
                     var docs = await _db.OutboxMessages.Where(o => o.DispatchedAt == null).OrderBy(o => o.OccurredAt).Take(_batchSize).ToListAsync(stoppingToken);
                     if (docs.Count == 0)
                     {
@@ -41,6 +42,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
                             var eventType = typeof(MemoryEvent).Assembly.GetTypes().FirstOrDefault(t => t.Name == doc.MessageType);
                             if (eventType == null)
                             {
+                                // If we don't recognize the type, log and mark it dispatched so it won't get stuck.
                                 _logger.LogWarning("Unknown outbox message type: {Type}", doc.MessageType);
                                 doc.DispatchedAt = DateTime.UtcNow;
                                 continue;
@@ -49,6 +51,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
                             var evt = (MemoryEvent?)System.Text.Json.JsonSerializer.Deserialize(doc.Payload, eventType);
                             if (evt == null)
                             {
+                                // Bad payload — don't keep retrying forever, mark it and move on.
                                 _logger.LogWarning("Failed to deserialize outbox payload for message {Id}", doc.MessageId);
                                 doc.DispatchedAt = DateTime.UtcNow;
                                 continue;

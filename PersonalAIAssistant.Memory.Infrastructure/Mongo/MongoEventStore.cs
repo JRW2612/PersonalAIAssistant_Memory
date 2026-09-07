@@ -9,6 +9,9 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
 {
     public class MongoEventStore : IEventStore
     {
+        // Mongo-backed event store. When possible we use server transactions to
+        // persist events and outbox documents together; otherwise we fall back
+        // to best-effort writes so the system keeps working.
         private readonly IMongoCollection<EventDocument> _collection;
         private readonly IMongoCollection<OutboxDocument> _outboxCollection;
         private readonly IEncryptionService _encryptionService;
@@ -25,7 +28,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
             _encryptionService = encryptionService;
             _encryptOptions = encryptOptions;
 
-            // Unique composite index on (StreamId, Version) for fast reads and concurrency enforcement.
+            // Ensure a unique index on (StreamId, Version) so reads are quick and we can rely
+            // on the database to help enforce optimistic concurrency.
             try
             {
                 var indexKeys = Builders<EventDocument>.IndexKeys
@@ -33,7 +37,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
                     .Ascending(d => d.Version);
                 _collection.Indexes.CreateOne(
                     new CreateIndexModel<EventDocument>(indexKeys, new CreateIndexOptions { Unique = true }));
-                // create index on outbox for quick querying of pending messages
+                // Also index the outbox by dispatched time so the dispatcher can find pending messages fast.
                 var outboxKeys = Builders<OutboxDocument>.IndexKeys.Ascending(d => d.DispatchedAt).Ascending(d => d.OccurredAt);
                 _outboxCollection.Indexes.CreateOne(new CreateIndexModel<OutboxDocument>(outboxKeys));
             }
@@ -120,7 +124,9 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
             catch (MongoCommandException mce) when (mce.Message.Contains("transaction") || mce.Message.Contains("not supported"))
             {
                 await session.AbortTransactionAsync(cancellationToken: ct);
-                // fallback to best-effort
+                // If transactions aren't available, fall back to best-effort writes: write events first,
+                // then the outbox documents. This isn't strictly atomic but still lets the dispatcher
+                // pick up messages for delivery.
                 if (events != null && events.Count > 0)
                     await AppendEventsAsync(streamId, events, expectedVersion, ct);
 

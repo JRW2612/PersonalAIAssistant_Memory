@@ -8,6 +8,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Messaging
 {
     public class OutboxDispatcherService : BackgroundService
     {
+        // Background worker that reads pending outbox documents from Mongo and publishes them
+        // to RabbitMQ via MassTransit. Keeps running until the host shuts down.
         private readonly IMongoDatabase _database;
         private readonly IPublishEndpoint _publishEndpoint;
         private readonly ILogger<OutboxDispatcherService> _logger;
@@ -42,12 +44,12 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Messaging
                     {
                         try
                         {
-                            // Resolve event type by name from MemoryEvent assembly
+                            // Try to find the CLR type that matches the message name so we can deserialize it.
                             var eventType = typeof(MemoryEvent).Assembly.GetTypes().FirstOrDefault(t => t.Name == doc.MessageType);
                             if (eventType == null)
                             {
                                 _logger.LogWarning("Unknown outbox message type: {Type}", doc.MessageType);
-                                // mark as dispatched to avoid retry loop
+                                // Mark it as dispatched so we don't keep retrying an unrecognizable type.
                                 var update = Builders<PersonalAIAssistant.Memory.Infrastructure.Mongo.OutboxDocument>.Update.Set(d => d.DispatchedAt, DateTime.UtcNow);
                                 await collection.UpdateOneAsync(Builders<PersonalAIAssistant.Memory.Infrastructure.Mongo.OutboxDocument>.Filter.Eq(d => d.Id, doc.Id), update, cancellationToken: stoppingToken);
                                 continue;
@@ -56,7 +58,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Messaging
                             var evt = (MemoryEvent?)System.Text.Json.JsonSerializer.Deserialize(doc.Payload, eventType);
                             if (evt == null)
                             {
-                                _logger.LogWarning("Failed to deserialize outbox payload for message {Id}", doc.MessageId);
+                                _logger.LogWarning("Couldn't deserialize outbox payload for message {Id}. Marking as dispatched.", doc.MessageId);
                                 var update = Builders<PersonalAIAssistant.Memory.Infrastructure.Mongo.OutboxDocument>.Update.Set(d => d.DispatchedAt, DateTime.UtcNow);
                                 await collection.UpdateOneAsync(Builders<PersonalAIAssistant.Memory.Infrastructure.Mongo.OutboxDocument>.Filter.Eq(d => d.Id, doc.Id), update, cancellationToken: stoppingToken);
                                 continue;
@@ -64,6 +66,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Messaging
 
                             await _publishEndpoint.Publish((object)evt, stoppingToken);
 
+                            // Mark the message as dispatched and bump the attempt counter.
                             var dispatchedUpdate = Builders<PersonalAIAssistant.Memory.Infrastructure.Mongo.OutboxDocument>.Update
                                 .Set(d => d.DispatchedAt, DateTime.UtcNow)
                                 .Inc(d => d.Attempts, 1);

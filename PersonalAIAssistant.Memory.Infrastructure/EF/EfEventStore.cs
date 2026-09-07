@@ -8,6 +8,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
 {
     public class EfEventStore : IEventStore
     {
+        // EF-backed event store. Writes events and EF outbox messages together inside
+        // a single database transaction so downstream message publishing can be reliable.
         private readonly EventStoreDbContext _db;
 
         public EfEventStore(EventStoreDbContext db)
@@ -24,7 +26,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
         {
             if (events == null || events.Count == 0) return;
 
-            // Determine current version
+            // Look up the current stream version so we can enforce optimistic concurrency.
             var last = await _db.Events.Where(e => e.StreamId == streamId).OrderByDescending(e => e.Version).FirstOrDefaultAsync(ct);
             var currentVersion = last?.Version ?? 0;
             if (currentVersion != expectedVersion)
@@ -61,7 +63,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
             using var tx = await _db.Database.BeginTransactionAsync(ct);
             try
             {
-                // append events
+                // Add the new events to the DB set. They will be saved when we call SaveChanges.
                 if (events != null && events.Count > 0)
                 {
                     var last = await _db.Events.Where(e => e.StreamId == streamId).OrderByDescending(e => e.Version).FirstOrDefaultAsync(ct);

@@ -34,7 +34,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Messaging
 
                     using (var scope = _services.CreateScope())
                     {
-                        // EF outbox cleanup (if EventStoreDbContext registered)
+                        // If we have the EF outbox available, delete any dispatched messages older than the cutoff.
+                        // This keeps the table from growing indefinitely.
                         try
                         {
                             var efDb = scope.ServiceProvider.GetService(typeof(EventStoreDbContext)) as EventStoreDbContext;
@@ -58,7 +59,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Messaging
                             _logger.LogWarning(ex, "EF outbox cleanup failed");
                         }
 
-                        // Mongo outbox cleanup (if IMongoDatabase registered)
+                        // If we have a Mongo outbox, delete old dispatched documents from the 'outbox' collection.
+                        // Same idea here: keep the collection size reasonable.
                         try
                         {
                             var mongoDb = scope.ServiceProvider.GetService(typeof(IMongoDatabase)) as IMongoDatabase;

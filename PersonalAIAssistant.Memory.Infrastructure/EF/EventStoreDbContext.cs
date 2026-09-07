@@ -5,6 +5,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
 {
     public class EventStoreDbContext : DbContext
     {
+        // EF DbContext that holds the event stream and the EF outbox table.
+        // We keep this separate from the read-model DbContext so responsibilities stay clear.
         public EventStoreDbContext(DbContextOptions<EventStoreDbContext> options) : base(options) { }
 
         public DbSet<EventEntity> Events { get; set; } = null!;

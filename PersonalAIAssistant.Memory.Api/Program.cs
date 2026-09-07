@@ -49,8 +49,24 @@ builder.Services.AddSwaggerGen(c =>
 
     c.AddSecurityDefinition("GeminiApiKey", new OpenApiSecurityScheme
     {
-        Description = "Client-provided Gemini API Key ('X-Gemini-Api-Key') supplied dynamically when user logs in to the AI application.",
+        Description = "Client-provided Gemini API Key ('X-Gemini-Api-Key') supplied dynamically when user logs in.",
         Name = "X-Gemini-Api-Key",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey
+    });
+
+    c.AddSecurityDefinition("OpenAiApiKey", new OpenApiSecurityScheme
+    {
+        Description = "Client-provided OpenAI API Key ('X-OpenAI-Api-Key') for ChatGPT actions and models.",
+        Name = "X-OpenAI-Api-Key",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey
+    });
+
+    c.AddSecurityDefinition("DeepSeekApiKey", new OpenApiSecurityScheme
+    {
+        Description = "Client-provided DeepSeek API Key ('X-DeepSeek-Api-Key') for DeepSeek reasoning models.",
+        Name = "X-DeepSeek-Api-Key",
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.ApiKey
     });
@@ -70,8 +86,29 @@ builder.Services.AddSwaggerGen(c =>
                 Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "GeminiApiKey" }
             },
             Array.Empty<string>()
+        },
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "OpenAiApiKey" }
+            },
+            Array.Empty<string>()
+        },
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "DeepSeekApiKey" }
+            },
+            Array.Empty<string>()
         }
     });
+
+    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath))
+    {
+        c.IncludeXmlComments(xmlPath);
+    }
 });
 
 // 3. Configure JWT Authentication (SEC-02, SEC-06)
