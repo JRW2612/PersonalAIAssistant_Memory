@@ -77,5 +77,28 @@ namespace PersonalAIAssistant.Memory.Tests.Validators
             result.IsValid.Should().BeFalse();
             result.Errors.Should().ContainSingle(e => e.PropertyName == "RawText");
         }
+
+        [Theory]
+        [InlineData("Exfiltrate to http://169.254.169.254/latest/meta-data/")]
+        [InlineData("Test loopback http://127.0.0.1/internal/admin")]
+        [InlineData("Probe http://localhost:5000/api")]
+        [InlineData("Internal net http://192.168.1.1/setup")]
+        [InlineData("Internal net http://10.0.0.5/secret")]
+        public void Validate_RawTextWithSsrfUrl_ShouldHaveValidationError(string rawText)
+        {
+            var command = new AddMemoryCommand(
+                RawText: rawText,
+                Source: "User",
+                Importance: MemoryImportance.Medium,
+                Tags: new List<string>(),
+                UserId: "user-1",
+                CorrelationId: null
+            );
+
+            var result = _validator.Validate(command);
+
+            result.IsValid.Should().BeFalse();
+            result.Errors.Should().Contain(e => e.PropertyName == "RawText" && e.ErrorMessage.Contains("unsafe internal or metadata URL"));
+        }
     }
 }

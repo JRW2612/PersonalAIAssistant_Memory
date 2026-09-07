@@ -95,5 +95,24 @@ namespace PersonalAIAssistant.Memory.Tests.Handlers
             // Assert
             result.Should().BeNull();
         }
+
+        [Theory]
+        [InlineData("anonymous-user")]
+        [InlineData("")]
+        [InlineData("   ")]
+        [InlineData(null)]
+        public async Task Handle_AnonymousOrEmptyUser_ReturnsNull(string? userId)
+        {
+            // Arrange
+            var memoryId = Guid.NewGuid();
+            var query = new GetMemoryByIdQuery(memoryId, userId!);
+
+            // Act
+            var result = await _handler.Handle(query, CancellationToken.None);
+
+            // Assert
+            result.Should().BeNull();
+            _readRepoMock.Verify(r => r.GetMemoriesByIdsAsync(It.IsAny<Guid[]>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
     }
 }

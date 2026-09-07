@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
+using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using PersonalAIAssistant.Memory.Core.Models;
 using Polly.Registry;
 using System.Net.Http.Json;
@@ -25,6 +26,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Gemini
         private readonly ILogger<GeminiChatProvider> _logger;
         private readonly IAiMetricsLogger _metrics;
         private readonly IAiGovernanceValidator _governance;
+        private readonly IUserContext _userContext;
 
         private static readonly JsonSerializerOptions JsonOpts = new()
         {
@@ -38,7 +40,9 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Gemini
             ResiliencePipelineProvider<string> polly,
             ILogger<GeminiChatProvider> logger,
             IAiMetricsLogger metrics,
-            IAiGovernanceValidator governance)
+            IAiGovernanceValidator governance,
+            IUserContext userContext,
+            IProviderTokenService? tokenService = null)
         {
             _http = httpFactory.CreateClient("gemini");
             _opts = opts.Value.Gemini;
@@ -46,7 +50,11 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Gemini
             _logger = logger;
             _metrics = metrics;
             _governance = governance;
+            _userContext = userContext;
+            _tokenService = tokenService;
         }
+
+        private readonly IProviderTokenService? _tokenService;
 
         public async Task<string> GetResponseAsync(string prompt, CancellationToken ct)
         {
@@ -75,7 +83,37 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Gemini
                 {
                     Content = JsonContent.Create(requestBody, options: JsonOpts)
                 };
-                requestMessage.Headers.TryAddWithoutValidation("x-goog-api-key", _opts.ApiKey);
+                // 1. Check dynamic key from user context (headers/claims)
+                var apiKey = _userContext.GetApiKey("gemini")
+                    ?? _userContext.GetApiKey(ProviderName);
+
+                // 2. Check stored connected personal AI account (OAuth / BYOK stored in DB)
+                if (string.IsNullOrWhiteSpace(apiKey) && _tokenService != null && !string.IsNullOrWhiteSpace(_userContext.UserId))
+                {
+                    apiKey = await _tokenService.GetValidAccessTokenAsync(_userContext.UserId, "gemini", "ai.generate", token);
+                }
+
+                // 3. Fallback to static server configuration if available
+                apiKey ??= (!string.IsNullOrWhiteSpace(_opts.ApiKey) ? _opts.ApiKey : null);
+
+                if (string.IsNullOrWhiteSpace(apiKey))
+                {
+                    throw new InvalidOperationException(
+                        $"[Gemini] No API key or connected account available for user '{_userContext.UserId}'. " +
+                        "Please connect your personal AI account on the Provider Connections page or supply an API key.");
+                }
+
+                if (apiKey.StartsWith("ya29.") || apiKey.StartsWith("gemini-oauth-token-"))
+                {
+                    requestMessage.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+                }
+                else
+                {
+                    requestMessage.Headers.TryAddWithoutValidation("x-goog-api-key", apiKey);
+                }
+                requestMessage.Headers.TryAddWithoutValidation("X-AI-User-Id", string.IsNullOrWhiteSpace(_userContext.UserId) ? "system" : _userContext.UserId);
+                requestMessage.Headers.TryAddWithoutValidation("X-AI-Model", model);
+                requestMessage.Headers.TryAddWithoutValidation("X-AI-Operation", "chat");
                 foreach (var header in _governance.GetComplianceHeaders())
                 {
                     requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value);

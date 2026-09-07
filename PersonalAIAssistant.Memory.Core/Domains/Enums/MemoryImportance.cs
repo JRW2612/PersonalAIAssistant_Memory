@@ -1,10 +1,9 @@
-﻿namespace PersonalAIAssistant.Memory.Core.Domains.Enums
+namespace PersonalAIAssistant.Memory.Core.Domains.Enums;
+
+public enum MemoryImportance
 {
-    public enum MemoryImportance
-    {
-        Low,
-        Medium,
-        High,
-        Critical
-    }
+    Low,
+    Medium,
+    High,
+    Critical
 }

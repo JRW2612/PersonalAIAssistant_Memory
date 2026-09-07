@@ -49,6 +49,10 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Messaging
                                 }
                             }
                         }
+                        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                        {
+                            break;
+                        }
                         catch (Exception ex)
                         {
                             _logger.LogWarning(ex, "EF outbox cleanup failed");
@@ -72,6 +76,10 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Messaging
                                 }
                             }
                         }
+                        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                        {
+                            break;
+                        }
                         catch (Exception ex)
                         {
                             _logger.LogWarning(ex, "Mongo outbox cleanup failed");
@@ -87,7 +95,14 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Messaging
                     _logger.LogError(ex, "Outbox cleanup encountered an error");
                 }
 
-                await Task.Delay(interval, stoppingToken);
+                try
+                {
+                    await Task.Delay(interval, stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
             }
         }
     }

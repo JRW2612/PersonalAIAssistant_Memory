@@ -1,0 +1,9 @@
+root = true
+
+[*.cs]
+# Modern C# file-scoped namespaces
+csharp_style_namespace_declarations = file_scoped:warning
+
+# Usings placement and sorting
+dotnet_sort_system_directives_first = true
+csharp_using_directive_placement = outside_namespace:warning

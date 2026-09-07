@@ -7,110 +7,109 @@ using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
 using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using PersonalAIAssistant.Memory.Events;
 
-namespace PersonalAIAssistant.Memory.Business.Handlers
+namespace PersonalAIAssistant.Memory.Business.Handlers;
+
+public class AddMemoryCommandHandler : IRequestHandler<AddMemoryCommand, Guid>
 {
-    public class AddMemoryCommandHandler : IRequestHandler<AddMemoryCommand, Guid>
+    private readonly IEventStore _eventStore;
+    private readonly IEventBus _eventBus;
+    private readonly ITextChunker _chunker;
+    private readonly Microsoft.Extensions.Options.IOptions<PersonalAIAssistant.Memory.Core.Models.AiProviderOptions> _options;
+
+    public AddMemoryCommandHandler(
+        IEventStore eventStore,
+        IEventBus eventBus,
+        ITextChunker chunker,
+        Microsoft.Extensions.Options.IOptions<PersonalAIAssistant.Memory.Core.Models.AiProviderOptions> options)
     {
-        private readonly IEventStore _eventStore;
-        private readonly IEventBus _eventBus;
-        private readonly ITextChunker _chunker;
-        private readonly Microsoft.Extensions.Options.IOptions<PersonalAIAssistant.Memory.Core.Models.AiProviderOptions> _options;
+        _eventStore = eventStore;
+        _eventBus = eventBus;
+        _chunker = chunker;
+        _options = options;
+    }
 
-        public AddMemoryCommandHandler(
-            IEventStore eventStore,
-            IEventBus eventBus,
-            ITextChunker chunker,
-            Microsoft.Extensions.Options.IOptions<PersonalAIAssistant.Memory.Core.Models.AiProviderOptions> options)
+    public async Task<Guid> Handle(AddMemoryCommand request, CancellationToken cancellationToken)
+    {
+        MemorySource source;
+        string? customSourceTag = null;
+
+        if (Enum.TryParse<MemorySource>(request.Source, ignoreCase: true, out var parsedSource)
+            && Enum.IsDefined(parsedSource)
+            && parsedSource != MemorySource.Unknown)
         {
-            _eventStore = eventStore;
-            _eventBus = eventBus;
-            _chunker = chunker;
-            _options = options;
+            source = parsedSource;
+        }
+        else
+        {
+            source = MemorySource.System;
+            if (!string.IsNullOrWhiteSpace(request.Source))
+            {
+                customSourceTag = $"source:{request.Source.Trim()}";
+            }
         }
 
-        public async Task<Guid> Handle(AddMemoryCommand request, CancellationToken cancellationToken)
+        var opts = _options.Value.Chunking;
+        var chunkOptions = new ChunkOptions(opts.MaxTokens, opts.OverlapTokens);
+
+        var chunks = opts.Enabled
+            ? _chunker.Chunk(request.RawText, chunkOptions)
+            : new[] { new TextChunk(request.RawText, 0, request.RawText.Length) };
+
+        var parentCorrelationId = request.CorrelationId ?? Guid.NewGuid().ToString();
+        Guid firstAggregateId = Guid.Empty;
+
+        var allEvents = new List<MemoryEvent>();
+
+        foreach (var chunk in chunks)
         {
-            MemorySource source;
-            string? customSourceTag = null;
+            var aggregate = new MemoryAggregate();
 
-            if (Enum.TryParse<MemorySource>(request.Source, ignoreCase: true, out var parsedSource)
-                && Enum.IsDefined(parsedSource)
-                && parsedSource != MemorySource.Unknown)
+            var chunkTags = request.Tags?.ToList() ?? new List<string>();
+            if (customSourceTag != null && !chunkTags.Contains(customSourceTag, StringComparer.OrdinalIgnoreCase))
             {
-                source = parsedSource;
+                chunkTags.Add(customSourceTag);
             }
-            else
+            if (chunks.Count > 1)
             {
-                source = MemorySource.System;
-                if (!string.IsNullOrWhiteSpace(request.Source))
-                {
-                    customSourceTag = $"source:{request.Source.Trim()}";
-                }
+                chunkTags.Add($"chunk:{chunk.Index}");
+                chunkTags.Add($"parent:{parentCorrelationId}");
             }
 
-            var opts = _options.Value.Chunking;
-            var chunkOptions = new ChunkOptions(opts.MaxTokens, opts.OverlapTokens);
+            aggregate.AddMemory(
+                rawText: chunk.Text,
+                source: source,
+                importance: request.Importance,
+                tags: chunkTags,
+                userId: request.UserId,
+                correlationId: parentCorrelationId);
 
-            var chunks = opts.Enabled
-                ? _chunker.Chunk(request.RawText, chunkOptions)
-                : new[] { new TextChunk(request.RawText, 0, request.RawText.Length) };
+            var uncommittedEvents = aggregate.UncommittedEvents.ToList();
+            if (!uncommittedEvents.Any()) continue;
 
-            var parentCorrelationId = request.CorrelationId ?? Guid.NewGuid().ToString();
-            Guid firstAggregateId = Guid.Empty;
+            var streamId = $"memory-{aggregate.Id.Value}";
 
-            var allEvents = new List<MemoryEvent>();
-
-            foreach (var chunk in chunks)
+            // Create outbox messages for each event so they can be published reliably by the outbox dispatcher
+            var outboxMessages = uncommittedEvents.Select(evt => new PersonalAIAssistant.Memory.Core.Messages.OutboxMessage
             {
-                var aggregate = new MemoryAggregate();
+                MessageId = evt.EventId,
+                MessageType = evt.GetType().Name,
+                Payload = System.Text.Json.JsonSerializer.Serialize(evt, evt.GetType()),
+                OccurredAt = DateTime.UtcNow
+            }).ToList();
 
-                var chunkTags = request.Tags?.ToList() ?? new List<string>();
-                if (customSourceTag != null && !chunkTags.Contains(customSourceTag, StringComparer.OrdinalIgnoreCase))
-                {
-                    chunkTags.Add(customSourceTag);
-                }
-                if (chunks.Count > 1)
-                {
-                    chunkTags.Add($"chunk:{chunk.Index}");
-                    chunkTags.Add($"parent:{parentCorrelationId}");
-                }
+            await _eventStore.AppendEventsWithOutboxAsync(streamId, uncommittedEvents, 0, outboxMessages, cancellationToken);
+            allEvents.AddRange(uncommittedEvents);
 
-                aggregate.AddMemory(
-                    rawText: chunk.Text,
-                    source: source,
-                    importance: request.Importance,
-                    tags: chunkTags,
-                    userId: request.UserId,
-                    correlationId: parentCorrelationId);
+            aggregate.ClearUncommittedEvents();
 
-                var uncommittedEvents = aggregate.UncommittedEvents.ToList();
-                if (!uncommittedEvents.Any()) continue;
-
-                var streamId = $"memory-{aggregate.Id.Value}";
-
-                // Create outbox messages for each event so they can be published reliably by the outbox dispatcher
-                var outboxMessages = uncommittedEvents.Select(evt => new PersonalAIAssistant.Memory.Core.Messages.OutboxMessage
-                {
-                    MessageId = evt.EventId,
-                    MessageType = evt.GetType().Name,
-                    Payload = System.Text.Json.JsonSerializer.Serialize(evt, evt.GetType()),
-                    OccurredAt = DateTime.UtcNow
-                }).ToList();
-
-                await _eventStore.AppendEventsWithOutboxAsync(streamId, uncommittedEvents, 0, outboxMessages, cancellationToken);
-                allEvents.AddRange(uncommittedEvents);
-
-                aggregate.ClearUncommittedEvents();
-
-                if (firstAggregateId == Guid.Empty)
-                {
-                    firstAggregateId = aggregate.Id.Value;
-                }
+            if (firstAggregateId == Guid.Empty)
+            {
+                firstAggregateId = aggregate.Id.Value;
             }
-
-            // Events are persisted and outbox entries created. A background outbox dispatcher will publish them to RabbitMQ.
-
-            return firstAggregateId == Guid.Empty ? Guid.NewGuid() : firstAggregateId;
         }
+
+        // Events are persisted and outbox entries created. A background outbox dispatcher will publish them to RabbitMQ.
+
+        return firstAggregateId == Guid.Empty ? Guid.NewGuid() : firstAggregateId;
     }
 }

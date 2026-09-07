@@ -1,9 +1,8 @@
-﻿namespace PersonalAIAssistant.Memory.Events
+namespace PersonalAIAssistant.Memory.Events;
+
+public class MemoryIndexedEvent : MemoryEvent
 {
-    public class MemoryIndexedEvent : MemoryEvent
-    {
-        public Guid MemoryId { get; set; }
-        public string EmbeddingId { get; set; } = string.Empty;
-        public string VectorProvider { get; set; } = string.Empty;   // e.g. "Pinecone", "FAISS"
-    }
+    public Guid MemoryId { get; set; }
+    public string EmbeddingId { get; set; } = string.Empty;
+    public string VectorProvider { get; set; } = string.Empty;   // e.g. "Pinecone", "FAISS"
 }

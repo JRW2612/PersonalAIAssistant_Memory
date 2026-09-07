@@ -1,14 +1,13 @@
-namespace PersonalAIAssistant.Memory.Core.Domains.Enums
+namespace PersonalAIAssistant.Memory.Core.Domains.Enums;
+
+public enum MemorySource
 {
-    public enum MemorySource
-    {
-        Unknown = -1,
-        Chat,
-        Email,
-        Note,
-        System,
-        User,
-        Other,
-        Api
-    }
+    Unknown = -1,
+    Chat,
+    Email,
+    Note,
+    System,
+    User,
+    Other,
+    Api
 }

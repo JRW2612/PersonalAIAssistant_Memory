@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PersonalAIAssistant.Memory.Core.DTOs;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
+using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using PersonalAIAssistant.Memory.Core.Models;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
@@ -12,23 +13,29 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi
     {
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly OpenAiOptions _options;
+        private readonly AiGatewayOptions _gateway;
+        private readonly IUserContext _userContext;
         private readonly ILogger<OpenAiEmbeddingService> _logger;
 
         public OpenAiEmbeddingService(
             IHttpClientFactory httpClientFactory,
             IOptions<OpenAiOptions> options,
+            IOptions<AiGatewayOptions> gateway,
+            IUserContext userContext,
             ILogger<OpenAiEmbeddingService> logger)
         {
             _httpClientFactory = httpClientFactory;
             _options = options.Value;
+            _gateway = gateway.Value;
+            _userContext = userContext;
             _logger = logger;
         }
 
         public async Task<EmbeddingResult> GenerateEmbeddingAsync(string text, CancellationToken ct)
         {
-            if (string.IsNullOrWhiteSpace(_options.ApiKey) || _options.ApiKey.Contains("placeholder", StringComparison.OrdinalIgnoreCase))
+            if (!_gateway.Enabled || string.IsNullOrWhiteSpace(_gateway.InternalAuthToken))
             {
-                _logger.LogWarning("OpenAI API key not configured or using placeholder. Returning deterministic dummy embedding vector for local testing.");
+                _logger.LogWarning("AI gateway is not configured. Returning deterministic dummy embedding vector for local testing.");
                 return GenerateDummyEmbedding(text);
             }
 
@@ -45,7 +52,9 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi
             {
                 Content = JsonContent.Create(requestBody)
             };
-            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _options.ApiKey);
+            request.Headers.TryAddWithoutValidation("X-AI-User-Id", string.IsNullOrWhiteSpace(_userContext.UserId) ? "system" : _userContext.UserId);
+            request.Headers.TryAddWithoutValidation("X-AI-Model", modelName);
+            request.Headers.TryAddWithoutValidation("X-AI-Operation", "embedding");
 
             try
             {

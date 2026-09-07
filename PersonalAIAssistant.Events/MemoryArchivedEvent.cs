@@ -1,8 +1,7 @@
-namespace PersonalAIAssistant.Memory.Events
+namespace PersonalAIAssistant.Memory.Events;
+
+public class MemoryArchivedEvent : MemoryEvent
 {
-    public class MemoryArchivedEvent : MemoryEvent
-    {
-        public Guid MemoryId { get; set; }
-        public string Reason { get; set; } = string.Empty;
-    }
+    public Guid MemoryId { get; set; }
+    public string Reason { get; set; } = string.Empty;
 }

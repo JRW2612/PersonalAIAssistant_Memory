@@ -10,7 +10,11 @@ using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
 using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using PersonalAIAssistant.Memory.Infrastructure.Extensions;
+using System.Security.Claims;
 using System.Text;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,7 +22,11 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddObservability();
 
 // 2. Add API Controllers & OpenAPI/Swagger
-builder.Services.AddControllers();
+builder.Services.AddControllers().AddJsonOptions(options =>
+{
+    // Tool/API payloads are allow-list contracts: do not silently ignore unknown parameters.
+    options.JsonSerializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
+});
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<PersonalAIAssistant.Memory.Core.Interfaces.Security.IUserContext, PersonalAIAssistant.Memory.Api.Security.HttpUserContext>();
 builder.Services.AddEndpointsApiExplorer();
@@ -40,12 +48,27 @@ builder.Services.AddSwaggerGen(c =>
         Scheme = "Bearer"
     });
 
+    c.AddSecurityDefinition("GeminiApiKey", new OpenApiSecurityScheme
+    {
+        Description = "Client-provided Gemini API Key ('X-Gemini-Api-Key') supplied dynamically when user logs in to the AI application.",
+        Name = "X-Gemini-Api-Key",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey
+    });
+
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         {
             new OpenApiSecurityScheme
             {
                 Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
+            },
+            Array.Empty<string>()
+        },
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "GeminiApiKey" }
             },
             Array.Empty<string>()
         }
@@ -87,13 +110,93 @@ builder.Services.AddAuthorization(options =>
         .Build();
 });
 
+// Rate limiting to defend against brute-force and LLM quota exhaustion
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, token) =>
+    {
+        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        context.HttpContext.Response.ContentType = "application/json";
+        var auditLogger = context.HttpContext.RequestServices.GetService<PersonalAIAssistant.Memory.Core.Interfaces.Security.ISecurityAuditLogger>();
+        var user = context.HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? context.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+        auditLogger?.LogRateLimitExceeded(user, context.HttpContext.Request.Path);
+
+        await context.HttpContext.Response.WriteAsJsonAsync(new
+        {
+            status = 429,
+            title = "Rate Limit Exceeded",
+            detail = "Request quota exceeded. Please slow down requests to prevent automated abuse."
+        }, cancellationToken: token);
+    };
+
+    options.AddPolicy("MemoryWritePolicy", httpContext =>
+    {
+        var identity = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                    ?? httpContext.Connection.RemoteIpAddress?.ToString()
+                    ?? "anonymous";
+        return RateLimitPartition.GetTokenBucketLimiter(
+            identity,
+            _ => new TokenBucketRateLimiterOptions
+            {
+                TokenLimit = 20,
+                TokensPerPeriod = 20,
+                ReplenishmentPeriod = TimeSpan.FromMinutes(1),
+                AutoReplenishment = true
+            });
+    });
+
+    options.AddPolicy("MemoryReadPolicy", httpContext =>
+    {
+        var identity = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                    ?? httpContext.Connection.RemoteIpAddress?.ToString()
+                    ?? "anonymous";
+        return RateLimitPartition.GetTokenBucketLimiter(
+            identity,
+            _ => new TokenBucketRateLimiterOptions
+            {
+                TokenLimit = 60,
+                TokensPerPeriod = 60,
+                ReplenishmentPeriod = TimeSpan.FromMinutes(1),
+                AutoReplenishment = true
+            });
+    });
+});
+
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+        if (allowedOrigins.Length > 0)
+        {
+            policy.WithOrigins(allowedOrigins)
+                  .AllowAnyMethod()
+                  .AllowAnyHeader()
+                  .AllowCredentials();
+        }
+        else if (builder.Environment.IsDevelopment())
+        {
+            // Development fallback: allow loopback/localhost origins with credentials
+            policy.SetIsOriginAllowed(origin =>
+            {
+                if (Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+                {
+                    return uri.IsLoopback;
+                }
+                return false;
+            })
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials();
+        }
+        else
+        {
+            // Production fallback when no origins configured: allow any origin but WITHOUT credentials
+            policy.AllowAnyOrigin()
+                  .AllowAnyMethod()
+                  .AllowAnyHeader();
+        }
     });
 });
 
@@ -149,6 +252,7 @@ builder.Services.AddMemoryBusinessServices(
 var app = builder.Build();
 
 // 6. Middleware Pipeline
+app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 if (app.Environment.IsDevelopment() || app.Environment.IsStaging())
@@ -159,6 +263,7 @@ if (app.Environment.IsDevelopment() || app.Environment.IsStaging())
 
 app.UseRouting();
 app.UseCors("AllowAll");
+app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseMiddleware<UserContextMiddleware>();

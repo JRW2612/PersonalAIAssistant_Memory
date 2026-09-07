@@ -62,17 +62,18 @@ namespace PersonalAIAssistant.Memory.Tests.Handlers
 
             // Assert
             resultId.Should().NotBeEmpty();
-            _eventStoreMock.Verify(s => s.AppendEventsAsync(
+            _eventStoreMock.Verify(s => s.AppendEventsWithOutboxAsync(
                 It.Is<string>(st => st.StartsWith("memory-")),
                 It.Is<IReadOnlyList<MemoryEvent>>(evs => evs.Count == 1),
                 0,
+                It.IsAny<IReadOnlyList<PersonalAIAssistant.Memory.Core.Messages.OutboxMessage>>(),
                 It.IsAny<CancellationToken>()
             ), Times.Once);
 
             _eventBusMock.Verify(b => b.PublishAsync(
-                It.Is<IEnumerable<MemoryEvent>>(evs => System.Linq.Enumerable.Any(evs)),
+                It.IsAny<IEnumerable<MemoryEvent>>(),
                 It.IsAny<CancellationToken>()
-            ), Times.Once);
+            ), Times.Never);
         }
 
         [Fact]
@@ -100,13 +101,14 @@ namespace PersonalAIAssistant.Memory.Tests.Handlers
 
             // Assert
             resultId.Should().NotBeEmpty();
-            _eventStoreMock.Verify(s => s.AppendEventsAsync(
+            _eventStoreMock.Verify(s => s.AppendEventsWithOutboxAsync(
                 It.Is<string>(st => st.StartsWith("memory-")),
                 It.Is<IReadOnlyList<MemoryEvent>>(evs => 
                     evs.Count == 1 && 
                     ((MemoryAddedEvent)evs[0]).Source == MemorySource.System.ToString() &&
                     ((MemoryAddedEvent)evs[0]).Tags.Contains("source:AuthenticationService")),
                 0,
+                It.IsAny<IReadOnlyList<PersonalAIAssistant.Memory.Core.Messages.OutboxMessage>>(),
                 It.IsAny<CancellationToken>()
             ), Times.Once);
         }

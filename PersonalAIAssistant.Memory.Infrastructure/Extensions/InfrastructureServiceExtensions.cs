@@ -41,6 +41,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.AddScoped<IProcessingLockStore>(sp => sp.GetRequiredService<SqlReadModelRepository>());
             services.AddScoped<IRetentionQueryStore>(sp => sp.GetRequiredService<SqlReadModelRepository>());
             services.AddScoped<ITransactionalReadModelRepository>(sp => sp.GetRequiredService<SqlReadModelRepository>());
+            services.AddScoped<IProviderConnectionRepository, SqlProviderConnectionRepository>();
+            services.AddScoped<IWorkloadIdentityRepository, SqlWorkloadIdentityRepository>();
 
             // Register MongoDB client, Database & Event Store / Snapshot Repository
             services.AddSingleton<IMongoClient>(new MongoClient(mongoConnectionString));
@@ -78,6 +80,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
         {
             // ── Bind strongly-typed options ──────────────────────────────────
             services.Configure<AiProviderOptions>(configuration.GetSection(AiProviderOptions.SectionName));
+            services.Configure<AiGatewayOptions>(configuration.GetSection(AiGatewayOptions.SectionName));
+            services.Configure<MemoryIngestionOptions>(configuration.GetSection(MemoryIngestionOptions.SectionName));
             services.Configure<AiGovernanceOptions>(configuration.GetSection(AiGovernanceOptions.SectionName));
             services.AddSingleton<IAiGovernanceValidator, CorporateAiGovernanceValidator>();
             services.Configure<OpenAiOptions>(configuration.GetSection(OpenAiOptions.SectionName));
@@ -90,19 +94,47 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.Configure<CmekOptions>(configuration.GetSection(CmekOptions.SectionName));
             services.Configure<DlpOptions>(configuration.GetSection(DlpOptions.SectionName));
             services.AddSingleton<IDataLossPreventionService, RuleBasedDlpService>();
+            services.Configure<AiThreatOptions>(configuration.GetSection(AiThreatOptions.SectionName));
+            services.AddSingleton<IPromptInjectionDetector, PatternBasedPromptInjectionDetector>();
+            services.AddSingleton<IUrlSafetyValidator, SsrfUrlValidator>();
+            services.AddSingleton<ISecurityAuditLogger, SecurityAuditLogger>();
+            services.AddSingleton<IMemoryIngestionSanitizer, MemoryIngestionSanitizer>();
+            services.AddSingleton<IToolSchemaValidator, StrictToolSchemaValidator>();
+
+            // Provider clients address either the private AI gateway (if enabled) or official provider endpoints directly.
+            var gateway = configuration.GetSection(AiGatewayOptions.SectionName).Get<AiGatewayOptions>() ?? new AiGatewayOptions();
 
             // ── Named HttpClients with Polly Resilience ──────────────────────
-            services.AddHttpClient("openai", client =>
+            if (gateway.Enabled && Uri.TryCreate(gateway.BaseUrl, UriKind.Absolute, out var gatewayBaseUrl))
             {
-                client.BaseAddress = new Uri("https://api.openai.com/v1/");
-                client.Timeout = TimeSpan.FromSeconds(60);
-            }).AddStandardResilienceHandler();
+                services.AddHttpClient("openai", client =>
+                {
+                    client.BaseAddress = new Uri(gatewayBaseUrl, "openai/");
+                    client.Timeout = TimeSpan.FromSeconds(gateway.TimeoutSeconds);
+                    client.DefaultRequestHeaders.Add("X-AI-Gateway-Key", gateway.InternalAuthToken);
+                }).AddStandardResilienceHandler();
 
-            services.AddHttpClient("gemini", client =>
+                services.AddHttpClient("gemini", client =>
+                {
+                    client.BaseAddress = new Uri(gatewayBaseUrl, "google/");
+                    client.Timeout = TimeSpan.FromSeconds(gateway.TimeoutSeconds);
+                    client.DefaultRequestHeaders.Add("X-AI-Gateway-Key", gateway.InternalAuthToken);
+                }).AddStandardResilienceHandler();
+            }
+            else
             {
-                client.BaseAddress = new Uri("https://generativelanguage.googleapis.com/v1beta/");
-                client.Timeout = TimeSpan.FromSeconds(60);
-            }).AddStandardResilienceHandler();
+                services.AddHttpClient("openai", client =>
+                {
+                    client.BaseAddress = new Uri("https://api.openai.com/v1/");
+                    client.Timeout = TimeSpan.FromSeconds(60);
+                }).AddStandardResilienceHandler();
+
+                services.AddHttpClient("gemini", client =>
+                {
+                    client.BaseAddress = new Uri("https://generativelanguage.googleapis.com/v1beta/");
+                    client.Timeout = TimeSpan.FromSeconds(60);
+                }).AddStandardResilienceHandler();
+            }
 
             services.AddHttpClient("teams", client =>
             {
@@ -128,6 +160,13 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.AddScoped<IMemoryRetrievalService, MemoryRetrievalService>();
             services.AddSingleton<PersonalAIAssistant.Memory.Infrastructure.Security.AesEncryptionService>();
             services.AddSingleton<IEncryptionService, PersonalAIAssistant.Memory.Infrastructure.Security.AesGcmEncryptionService>();
+
+            // ── Provider Connections & OAuth BYOK ────────────────────────────
+            services.AddSingleton<IOAuthStateManager, OAuthStateManager>();
+            services.AddHttpClient<GoogleOAuthProviderHandler>();
+            services.AddScoped<IOAuthProviderHandler, GoogleOAuthProviderHandler>();
+            services.AddScoped<IProviderTokenService, ProviderTokenService>();
+            services.AddScoped<IWorkloadAuthenticationService, WorkloadAuthenticationService>();
 
             // ── Vector Database (Qdrant) ─────────────────────────────────────
             services.Configure<QdrantOptions>(configuration.GetSection(QdrantOptions.SectionName));

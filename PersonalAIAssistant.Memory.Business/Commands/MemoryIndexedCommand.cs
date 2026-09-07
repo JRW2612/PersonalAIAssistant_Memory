@@ -1,11 +1,10 @@
-﻿using MediatR;
+using MediatR;
 
-namespace PersonalAIAssistant.Memory.Business.Commands
-{
-    public record MemoryIndexedCommand
-    (
-         Guid MemoryId,
-         string EmbeddingId,
-         string VectorProvider  // e.g. "Pinecone", "FAISS"
-    ) : IRequest<bool>;
-}
+namespace PersonalAIAssistant.Memory.Business.Commands;
+
+public record MemoryIndexedCommand
+(
+     Guid MemoryId,
+     string EmbeddingId,
+     string VectorProvider  // e.g. "Pinecone", "FAISS"
+) : IRequest<bool>;

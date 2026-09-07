@@ -1,9 +1,8 @@
-namespace PersonalAIAssistant.Memory.Core.Domains.Enums
+namespace PersonalAIAssistant.Memory.Core.Domains.Enums;
+
+public enum MemoryStatus
 {
-    public enum MemoryStatus
-    {
-        Active = 1,
-        Archived = 2,
-        Deleted = 3
-    }
+    Active = 1,
+    Archived = 2,
+    Deleted = 3
 }

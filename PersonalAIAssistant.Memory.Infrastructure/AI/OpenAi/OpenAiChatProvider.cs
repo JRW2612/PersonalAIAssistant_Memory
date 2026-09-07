@@ -1,9 +1,9 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
+using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using PersonalAIAssistant.Memory.Core.Models;
 using Polly.Registry;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -25,6 +25,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi
         private readonly ILogger<OpenAiChatProvider> _logger;
         private readonly IAiMetricsLogger _metrics;
         private readonly IAiGovernanceValidator _governance;
+        private readonly IUserContext _userContext;
 
         private static readonly JsonSerializerOptions JsonOpts = new()
         {
@@ -38,7 +39,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi
             ResiliencePipelineProvider<string> polly,
             ILogger<OpenAiChatProvider> logger,
             IAiMetricsLogger metrics,
-            IAiGovernanceValidator governance)
+            IAiGovernanceValidator governance,
+            IUserContext userContext)
         {
             _http = httpFactory.CreateClient("openai");
             _opts = opts.Value.OpenAi;
@@ -46,6 +48,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi
             _logger = logger;
             _metrics = metrics;
             _governance = governance;
+            _userContext = userContext;
         }
 
         public async Task<string> GetResponseAsync(string prompt, CancellationToken ct)
@@ -70,8 +73,9 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi
                 {
                     Content = JsonContent.Create(request, options: JsonOpts)
                 };
-                httpRequest.Headers.Authorization =
-                    new AuthenticationHeaderValue("Bearer", _opts.ApiKey);
+                httpRequest.Headers.TryAddWithoutValidation("X-AI-User-Id", string.IsNullOrWhiteSpace(_userContext.UserId) ? "system" : _userContext.UserId);
+                httpRequest.Headers.TryAddWithoutValidation("X-AI-Model", request.Model);
+                httpRequest.Headers.TryAddWithoutValidation("X-AI-Operation", "chat");
                 foreach (var header in _governance.GetComplianceHeaders())
                 {
                     httpRequest.Headers.TryAddWithoutValidation(header.Key, header.Value);

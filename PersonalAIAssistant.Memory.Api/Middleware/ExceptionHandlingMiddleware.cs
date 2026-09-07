@@ -3,130 +3,176 @@ using PersonalAIAssistant.Memory.Core.Exceptions;
 using System.Net;
 using System.Text.Json;
 
-namespace PersonalAIAssistant.Memory.Api.Middleware
+namespace PersonalAIAssistant.Memory.Api.Middleware;
+
+/// <summary>
+/// Global exception handling middleware that maps application and domain exceptions
+/// to standard HTTP status codes (400 Bad Request, 404 Not Found, 403 Forbidden, etc.)
+/// </summary>
+public class ExceptionHandlingMiddleware
 {
-    /// <summary>
-    /// Global exception handling middleware that maps application and domain exceptions
-    /// to standard HTTP status codes (400 Bad Request, 404 Not Found, 403 Forbidden, etc.)
-    /// </summary>
-    public class ExceptionHandlingMiddleware
+    private readonly RequestDelegate _next;
+    private readonly ILogger<ExceptionHandlingMiddleware> _logger;
+
+    public ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger)
     {
-        private readonly RequestDelegate _next;
-        private readonly ILogger<ExceptionHandlingMiddleware> _logger;
+        _next = next;
+        _logger = logger;
+    }
 
-        public ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger)
+    public async Task InvokeAsync(HttpContext context)
+    {
+        try
         {
-            _next = next;
-            _logger = logger;
+            await _next(context);
         }
-
-        public async Task InvokeAsync(HttpContext context)
+        catch (ValidationException ex)
         {
-            try
+            _logger.LogWarning(ex, "Validation error occurred during request execution.");
+
+            context.Response.ContentType = "application/json";
+            context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+
+            var errors = ex.Errors.Select(e => new
             {
-                await _next(context);
-            }
-            catch (ValidationException ex)
+                Field = e.PropertyName,
+                Error = e.ErrorMessage
+            });
+
+            var response = new
             {
-                _logger.LogWarning(ex, "Validation error occurred during request execution.");
+                Status = (int)HttpStatusCode.BadRequest,
+                Title = "Validation Failed",
+                Errors = errors
+            };
 
-                context.Response.ContentType = "application/json";
-                context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+            await context.Response.WriteAsync(JsonSerializer.Serialize(response));
+        }
+        catch (PersonalAIAssistant.Memory.Core.Exceptions.DlpViolationException dlpEx)
+        {
+            _logger.LogWarning(dlpEx, "DLP Policy Violation: {Message}", dlpEx.Message);
 
-                var errors = ex.Errors.Select(e => new
-                {
-                    Field = e.PropertyName,
-                    Error = e.ErrorMessage
-                });
-
-                var response = new
-                {
-                    Status = (int)HttpStatusCode.BadRequest,
-                    Title = "Validation Failed",
-                    Errors = errors
-                };
-
-                await context.Response.WriteAsync(JsonSerializer.Serialize(response));
-            }
-            catch (PersonalAIAssistant.Memory.Core.Exceptions.DlpViolationException dlpEx)
+            context.Response.ContentType = "application/json";
+            context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+            await context.Response.WriteAsJsonAsync(new
             {
-                _logger.LogWarning(dlpEx, "DLP Policy Violation: {Message}", dlpEx.Message);
+                Status = 400,
+                Title = "DLP Policy Violation",
+                Detail = dlpEx.Message,
+                Violations = dlpEx.Violations.Select(v => new { Category = v.Category.ToString(), v.Description })
+            });
+            return;
+        }
+        catch (PersonalAIAssistant.Memory.Core.Exceptions.PromptInjectionException piEx)
+        {
+            _logger.LogWarning(piEx, "Prompt Injection Detected: Category={Category} | Message={Message}", piEx.Category, piEx.Message);
 
-                context.Response.ContentType = "application/json";
-                context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
-                await context.Response.WriteAsJsonAsync(new
-                {
-                    Status = 400,
-                    Title = "DLP Policy Violation",
-                    Detail = dlpEx.Message,
-                    Violations = dlpEx.Violations.Select(v => new { Category = v.Category.ToString(), v.Description })
-                });
-                return;
-            }
-            catch (DomainException ex)
+            context.Response.ContentType = "application/json";
+            context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+            await context.Response.WriteAsJsonAsync(new
             {
-                _logger.LogWarning(ex, "Domain exception occurred: {Message}", ex.Message);
+                Status = 400,
+                Title = "Prompt Injection Detected",
+                Detail = piEx.Message,
+                Category = piEx.Category.ToString(),
+                piEx.MatchedPattern
+            });
+            return;
+        }
+        catch (PersonalAIAssistant.Memory.Core.Exceptions.InputSanitizationException isEx)
+        {
+            _logger.LogWarning(isEx, "Input Sanitization Rejected: ViolationType={Type} | Message={Message}", isEx.ViolationType, isEx.Message);
 
-                context.Response.ContentType = "application/json";
-                context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
-
-                var response = new
-                {
-                    Status = (int)HttpStatusCode.BadRequest,
-                    Title = "Bad Request",
-                    Detail = ex.Message
-                };
-
-                await context.Response.WriteAsync(JsonSerializer.Serialize(response));
-            }
-            catch (KeyNotFoundException ex)
+            context.Response.ContentType = "application/json";
+            context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+            await context.Response.WriteAsJsonAsync(new
             {
-                _logger.LogWarning(ex, "Resource not found: {Message}", ex.Message);
+                Status = 400,
+                Title = "Input Sanitization Rejected",
+                Detail = isEx.Message,
+                isEx.ViolationType
+            });
+            return;
+        }
+        catch (PersonalAIAssistant.Memory.Core.Exceptions.SsrfSecurityException ssrfEx)
+        {
+            _logger.LogWarning(ssrfEx, "SSRF Policy Violation: TargetUrl={Url} | Reason={Reason}", ssrfEx.TargetUrl, ssrfEx.Reason);
 
-                context.Response.ContentType = "application/json";
-                context.Response.StatusCode = (int)HttpStatusCode.NotFound;
-
-                var response = new
-                {
-                    Status = (int)HttpStatusCode.NotFound,
-                    Title = "Not Found",
-                    Detail = ex.Message
-                };
-
-                await context.Response.WriteAsync(JsonSerializer.Serialize(response));
-            }
-            catch (UnauthorizedAccessException ex)
+            context.Response.ContentType = "application/json";
+            context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+            await context.Response.WriteAsJsonAsync(new
             {
-                _logger.LogWarning(ex, "Unauthorized access attempt: {Message}", ex.Message);
+                Status = 400,
+                Title = "SSRF Policy Violation",
+                Detail = ssrfEx.Message,
+                ssrfEx.TargetUrl,
+                ssrfEx.Reason
+            });
+            return;
+        }
+        catch (DomainException ex)
+        {
+            _logger.LogWarning(ex, "Domain exception occurred: {Message}", ex.Message);
 
-                context.Response.ContentType = "application/json";
-                context.Response.StatusCode = (int)HttpStatusCode.Forbidden;
+            context.Response.ContentType = "application/json";
+            context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
 
-                var response = new
-                {
-                    Status = (int)HttpStatusCode.Forbidden,
-                    Title = "Forbidden",
-                    Detail = ex.Message
-                };
-
-                await context.Response.WriteAsync(JsonSerializer.Serialize(response));
-            }
-            catch (Exception ex)
+            var response = new
             {
-                _logger.LogError(ex, "An unhandled server exception occurred.");
+                Status = (int)HttpStatusCode.BadRequest,
+                Title = "Bad Request",
+                Detail = ex.Message
+            };
 
-                context.Response.ContentType = "application/json";
-                context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+            await context.Response.WriteAsync(JsonSerializer.Serialize(response));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            _logger.LogWarning(ex, "Resource not found: {Message}", ex.Message);
 
-                var response = new
-                {
-                    Status = (int)HttpStatusCode.InternalServerError,
-                    Title = "Internal Server Error",
-                    Detail = "An unexpected error occurred processing your request."
-                };
+            context.Response.ContentType = "application/json";
+            context.Response.StatusCode = (int)HttpStatusCode.NotFound;
 
-                await context.Response.WriteAsync(JsonSerializer.Serialize(response));
-            }
+            var response = new
+            {
+                Status = (int)HttpStatusCode.NotFound,
+                Title = "Not Found",
+                Detail = ex.Message
+            };
+
+            await context.Response.WriteAsync(JsonSerializer.Serialize(response));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Unauthorized access attempt: {Message}", ex.Message);
+
+            context.Response.ContentType = "application/json";
+            context.Response.StatusCode = (int)HttpStatusCode.Forbidden;
+
+            var response = new
+            {
+                Status = (int)HttpStatusCode.Forbidden,
+                Title = "Forbidden",
+                Detail = ex.Message
+            };
+
+            await context.Response.WriteAsync(JsonSerializer.Serialize(response));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "An unhandled server exception occurred.");
+
+            context.Response.ContentType = "application/json";
+            context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+
+            var response = new
+            {
+                Status = (int)HttpStatusCode.InternalServerError,
+                Title = "Internal Server Error",
+                Detail = "An unexpected error occurred processing your request."
+            };
+
+            await context.Response.WriteAsync(JsonSerializer.Serialize(response));
         }
     }
 }

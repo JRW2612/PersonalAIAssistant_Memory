@@ -1,11 +1,10 @@
-﻿using MediatR;
+using MediatR;
 
-namespace PersonalAIAssistant.Memory.Business.Commands
-{
-    public record SnapshotCreatedCommand
-    (
-         Guid AggregateIdSnapshot,
-         string SnapshotPayload,   // JSON summary of state
-         int SnapshotVersion
-    ) : IRequest<Guid>;
-}
+namespace PersonalAIAssistant.Memory.Business.Commands;
+
+public record SnapshotCreatedCommand
+(
+     Guid AggregateIdSnapshot,
+     string SnapshotPayload,   // JSON summary of state
+     int SnapshotVersion
+) : IRequest<Guid>;

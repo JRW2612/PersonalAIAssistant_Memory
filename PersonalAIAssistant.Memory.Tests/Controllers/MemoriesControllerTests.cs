@@ -92,6 +92,32 @@ namespace PersonalAIAssistant.Memory.Tests.Controllers
             okResult.Value.Should().Be(fusedPrompt);
         }
 
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        [InlineData(null)]
+        public async Task SearchMemories_EmptyOrWhitespaceQuery_ReturnsBadRequest(string? query)
+        {
+            var result = await _controller.SearchMemories(query!, 5, CancellationToken.None);
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
+
+        [Fact]
+        public async Task SearchMemories_TopKExceedsMax_ClampsTo50()
+        {
+            var fusedPrompt = new FusedMemoryPrompt("Context", new List<RetrievedMemory>());
+
+            _mediatorMock
+                .Setup(m => m.Send(It.Is<RetrieveMemoriesQuery>(q => q.TopK == 50), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(fusedPrompt);
+
+            var result = await _controller.SearchMemories("valid query", 99999, CancellationToken.None);
+
+            result.Should().BeOfType<OkObjectResult>();
+            _mediatorMock.Verify(m => m.Send(It.Is<RetrieveMemoriesQuery>(q => q.TopK == 50), It.IsAny<CancellationToken>()), Times.Once);
+        }
+
         [Fact]
         public async Task GetMemoryById_WhenFound_ReturnsOk_WithMemoryReadModel()
         {

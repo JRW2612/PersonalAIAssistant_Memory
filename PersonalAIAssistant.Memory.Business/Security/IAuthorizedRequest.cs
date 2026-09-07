@@ -1,9 +1,8 @@
-namespace PersonalAIAssistant.Memory.Business.Security
+namespace PersonalAIAssistant.Memory.Business.Security;
+
+public interface IAuthorizedRequest
 {
-    public interface IAuthorizedRequest
-    {
-        Guid MemoryId { get; }
-        string UserId { get; }
-        string TenantId { get; }
-    }
+    Guid MemoryId { get; }
+    string UserId { get; }
+    string TenantId { get; }
 }

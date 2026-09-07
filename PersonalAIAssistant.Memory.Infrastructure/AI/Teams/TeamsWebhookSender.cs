@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using PersonalAIAssistant.Memory.Core.Exceptions;
 using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
+using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using PersonalAIAssistant.Memory.Core.Models;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
@@ -10,21 +12,37 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Teams
     /// <summary>
     /// INotificationSender implementation that posts Adaptive Cards to a
     /// Microsoft Teams channel via an Incoming Webhook connector URL.
+    /// Defends against SSRF by validating the destination URL before making requests.
     /// </summary>
     public sealed class TeamsWebhookSender : INotificationSender
     {
         private readonly HttpClient _http;
         private readonly TeamsOptions _opts;
+        private readonly AiThreatOptions _threatOptions;
+        private readonly IUrlSafetyValidator _urlValidator;
         private readonly ILogger<TeamsWebhookSender> _logger;
 
         public TeamsWebhookSender(
             IHttpClientFactory httpFactory,
             IOptions<TeamsOptions> opts,
+            IUrlSafetyValidator urlValidator,
+            IOptions<AiThreatOptions> threatOptions,
             ILogger<TeamsWebhookSender> logger)
         {
             _http = httpFactory.CreateClient("teams");
             _opts = opts.Value;
+            _urlValidator = urlValidator;
+            _threatOptions = threatOptions.Value;
             _logger = logger;
+        }
+
+        public TeamsWebhookSender(
+            IHttpClientFactory httpFactory,
+            IOptions<TeamsOptions> opts,
+            IUrlSafetyValidator urlValidator,
+            ILogger<TeamsWebhookSender> logger)
+            : this(httpFactory, opts, urlValidator, Microsoft.Extensions.Options.Options.Create(new AiThreatOptions()), logger)
+        {
         }
 
         public async Task SendAsync(string title, string body, CancellationToken ct = default)
@@ -39,6 +57,19 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI.Teams
             {
                 _logger.LogWarning("[Teams] WebhookUrl is not configured — skipping notification.");
                 return;
+            }
+
+            // SSRF Validation: block internal network / metadata URLs and enforce allowlist
+            var safetyResult = _urlValidator.ValidateUrl(
+                _opts.WebhookUrl,
+                allowedHosts: _threatOptions.AllowedWebhookHosts,
+                requireHttps: _threatOptions.RequireHttps);
+
+            if (!safetyResult.IsSafe)
+            {
+                _logger.LogError("[Teams][SSRF BLOCKED] Blocked unsafe webhook URL '{Url}': {Reason}",
+                    _opts.WebhookUrl, safetyResult.Reason);
+                throw new SsrfSecurityException(_opts.WebhookUrl, safetyResult.Reason);
             }
 
             var card = new AdaptiveCardPayload

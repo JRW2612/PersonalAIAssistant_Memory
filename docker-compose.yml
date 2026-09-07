@@ -18,12 +18,58 @@ services:
       - MessageBroker__Host=rabbitmq
       - MessageBroker__Username=guest
       - MessageBroker__Password=guest
+      - AiGateway__Enabled=true
+      - AiGateway__BaseUrl=http://ai-gateway:8080/v1/
+      - AiGateway__InternalAuthToken=${AI_GATEWAY_INTERNAL_TOKEN:?set_AI_GATEWAY_INTERNAL_TOKEN}
     depends_on:
       - mongo
       - postgres
       - qdrant
       - rabbitmq
+      - ai-gateway
     restart: on-failure
+    networks:
+      - backend
+
+  ai-gateway:
+    build:
+      context: .
+      dockerfile: PersonalAIAssistant.AiGateway/Dockerfile
+    environment:
+      - Gateway__InternalAuthToken=${AI_GATEWAY_INTERNAL_TOKEN:?set_AI_GATEWAY_INTERNAL_TOKEN}
+      - Upstreams__OpenAi__Authorization=Bearer ${OPENAI_API_KEY:-}
+      - Upstreams__Google__ApiKey=${GOOGLE_AI_API_KEY:-}
+      - Upstreams__Anthropic__ApiKey=${ANTHROPIC_API_KEY:-}
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    restart: on-failure
+    networks:
+      - backend
+      - ai-egress
+
+  # This profile is the only approved execution environment. Connect a code-execution
+  # adapter only to this service; it has no network, a read-only root filesystem and no Linux capabilities.
+  execution-sandbox:
+    build:
+      context: ./execution-sandbox
+    profiles: ["execution"]
+    network_mode: "none"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: 0.50
 
   mongo:
     image: mongo:7.0
@@ -31,6 +77,8 @@ services:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
+    networks:
+      - backend
 
   postgres:
     image: postgres:16-alpine
@@ -42,6 +90,8 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
 
   qdrant:
     image: qdrant/qdrant:v1.9.0
@@ -50,14 +100,23 @@ services:
       - "6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
+    networks:
+      - backend
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     ports:
       - "5672:5672"
       - "15672:15672"
+    networks:
+      - backend
 
 volumes:
   mongo_data:
   postgres_data:
   qdrant_data:
+
+networks:
+  backend:
+    internal: true
+  ai-egress:

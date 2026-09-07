@@ -5,42 +5,41 @@ using PersonalAIAssistant.Memory.Core.Domains.ValueObjects;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
 using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 
-namespace PersonalAIAssistant.Memory.Business.Handlers
+namespace PersonalAIAssistant.Memory.Business.Handlers;
+
+public class MemoryIndexedCommandHandler : IRequestHandler<MemoryIndexedCommand, bool>
 {
-    public class MemoryIndexedCommandHandler : IRequestHandler<MemoryIndexedCommand, bool>
+    private readonly IEventStore _eventStore;
+    private readonly IEventBus _eventBus;
+
+    public MemoryIndexedCommandHandler(IEventStore eventStore, IEventBus eventBus)
     {
-        private readonly IEventStore _eventStore;
-        private readonly IEventBus _eventBus;
+        _eventStore = eventStore;
+        _eventBus = eventBus;
+    }
 
-        public MemoryIndexedCommandHandler(IEventStore eventStore, IEventBus eventBus)
-        {
-            _eventStore = eventStore;
-            _eventBus = eventBus;
-        }
+    public async Task<bool> Handle(MemoryIndexedCommand request, CancellationToken cancellationToken)
+    {
+        var streamId = $"memory-{request.MemoryId}";
+        var history = await _eventStore.GetEventsAsync(streamId, cancellationToken);
 
-        public async Task<bool> Handle(MemoryIndexedCommand request, CancellationToken cancellationToken)
-        {
-            var streamId = $"memory-{request.MemoryId}";
-            var history = await _eventStore.GetEventsAsync(streamId, cancellationToken);
+        if (history == null || !history.Any())
+            throw new KeyNotFoundException($"Memory with ID {request.MemoryId} not found.");
 
-            if (history == null || !history.Any())
-                throw new KeyNotFoundException($"Memory with ID {request.MemoryId} not found.");
+        var aggregate = new MemoryAggregate(new MemoryId(request.MemoryId));
+        aggregate.LoadFromHistory(history);
 
-            var aggregate = new MemoryAggregate(new MemoryId(request.MemoryId));
-            aggregate.LoadFromHistory(history);
+        aggregate.MarkIndexed(request.EmbeddingId, request.VectorProvider, userId: "system");
 
-            aggregate.MarkIndexed(request.EmbeddingId, request.VectorProvider, userId: "system");
-
-            var uncommittedEvents = aggregate.UncommittedEvents.ToList();
-            if (!uncommittedEvents.Any())
-                return true;
-
-            var expectedVersion = aggregate.Version - uncommittedEvents.Count;
-            await _eventStore.AppendEventsAsync(streamId, uncommittedEvents, expectedVersion, cancellationToken);
-            await _eventBus.PublishAsync(uncommittedEvents, cancellationToken);
-            aggregate.ClearUncommittedEvents();
-
+        var uncommittedEvents = aggregate.UncommittedEvents.ToList();
+        if (!uncommittedEvents.Any())
             return true;
-        }
+
+        var expectedVersion = aggregate.Version - uncommittedEvents.Count;
+        await _eventStore.AppendEventsAsync(streamId, uncommittedEvents, expectedVersion, cancellationToken);
+        await _eventBus.PublishAsync(uncommittedEvents, cancellationToken);
+        aggregate.ClearUncommittedEvents();
+
+        return true;
     }
 }

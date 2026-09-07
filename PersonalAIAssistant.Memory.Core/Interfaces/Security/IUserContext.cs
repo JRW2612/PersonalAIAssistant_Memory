@@ -12,5 +12,11 @@ namespace PersonalAIAssistant.Memory.Core.Interfaces.Security
         bool IsAuthenticated { get; }
         bool IsAdmin => Roles.Contains("Admin", StringComparer.OrdinalIgnoreCase);
         bool IsAuditor => Roles.Contains("ComplianceAuditor", StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Retrieves the client/user-supplied AI provider credential (e.g. BYOK Gemini API key)
+        /// provided dynamically when the user logs in to the AI application.
+        /// </summary>
+        string? GetApiKey(string providerName) => null;
     }
 }
