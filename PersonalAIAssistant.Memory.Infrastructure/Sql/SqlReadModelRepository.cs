@@ -15,7 +15,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Sql
         IEventIdempotencyStore,
         IProcessingLockStore,
         IRetentionQueryStore,
-        ITransactionalReadModelRepository
+        ITransactionalReadModelRepository,
+        ITemporalFactRepository
     {
         private readonly ReadModelDbContext _db;
         private readonly IEncryptionService _encryptionService;
@@ -274,6 +275,106 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Sql
             {
                 return summary;
             }
+        }
+
+        // ─── ITemporalFactRepository ──────────────────────────────────────────────
+
+        public async Task UpsertFactAsync(TemporalFact fact, string userId, CancellationToken ct = default)
+        {
+            var entity = await _db.TemporalFacts.FirstOrDefaultAsync(f => f.Id == fact.Id, ct);
+            if (entity == null)
+            {
+                entity = new TemporalFactEntity
+                {
+                    Id = fact.Id,
+                    UserId = userId,
+                    Subject = fact.Subject,
+                    Predicate = fact.Predicate,
+                    Object = fact.Object,
+                    ValidFromUtc = fact.ValidFromUtc,
+                    ValidToUtc = fact.ValidToUtc,
+                    IsCurrent = fact.IsCurrent,
+                    Confidence = fact.Confidence,
+                    Source = fact.Source,
+                    CreatedAtUtc = DateTime.UtcNow
+                };
+                await _db.TemporalFacts.AddAsync(entity, ct);
+            }
+            else
+            {
+                entity.Object = fact.Object;
+                entity.ValidFromUtc = fact.ValidFromUtc;
+                entity.ValidToUtc = fact.ValidToUtc;
+                entity.IsCurrent = fact.IsCurrent;
+                entity.Confidence = fact.Confidence;
+                entity.Source = fact.Source;
+            }
+
+            await _db.SaveChangesAsync(ct);
+        }
+
+        public async Task InvalidateFactAsync(string userId, string subject, string predicate, DateTime invalidatedAtUtc, CancellationToken ct = default)
+        {
+            var activeFacts = await _db.TemporalFacts
+                .Where(f => f.UserId == userId && f.IsCurrent && f.Subject == subject && f.Predicate == predicate)
+                .ToListAsync(ct);
+
+            foreach (var fact in activeFacts)
+            {
+                fact.IsCurrent = false;
+                fact.ValidToUtc = invalidatedAtUtc;
+                fact.InvalidatedAtUtc = DateTime.UtcNow;
+            }
+
+            if (activeFacts.Any())
+            {
+                await _db.SaveChangesAsync(ct);
+            }
+        }
+
+        public async Task<IReadOnlyList<TemporalFact>> GetCurrentFactsAsync(string userId, string? subject = null, CancellationToken ct = default)
+        {
+            var query = _db.TemporalFacts.AsNoTracking()
+                .Where(f => f.UserId == userId && f.IsCurrent);
+
+            if (!string.IsNullOrWhiteSpace(subject))
+            {
+                query = query.Where(f => f.Subject == subject);
+            }
+
+            var entities = await query.OrderBy(f => f.Subject).ThenBy(f => f.Predicate).ToListAsync(ct);
+
+            return entities.Select(e => new TemporalFact(
+                Id: e.Id,
+                Subject: e.Subject,
+                Predicate: e.Predicate,
+                Object: e.Object,
+                ValidFromUtc: e.ValidFromUtc,
+                ValidToUtc: e.ValidToUtc,
+                IsCurrent: e.IsCurrent,
+                Confidence: e.Confidence,
+                Source: e.Source
+            )).ToList();
+        }
+
+        public async Task<IReadOnlyList<TemporalFact>> GetFactHistoryAsync(string userId, string subject, string predicate, CancellationToken ct = default)
+        {
+            var entities = await _db.TemporalFacts.AsNoTracking()
+                .Where(f => f.UserId == userId && f.Subject == subject && f.Predicate == predicate)
+                .OrderByDescending(f => f.ValidFromUtc)
+                .ToListAsync(ct);
+
+            return entities.Select(e => new TemporalFact(
+                Id: e.Id,
+                Subject: e.Subject,
+                Predicate: e.Predicate,
+                Object: e.Object,
+                ValidFromUtc: e.ValidFromUtc,
+                ValidToUtc: e.ValidToUtc,
+                IsCurrent: e.IsCurrent,
+                Confidence: e.Confidence,
+                Source: e.Source
+            )).ToList();
         }
     }
 }

@@ -6,7 +6,9 @@ using PersonalAIAssistant.Memory.Business.Behaviors;
 using PersonalAIAssistant.Memory.Business.EventHandlers;
 using PersonalAIAssistant.Memory.Business.Projectors;
 using PersonalAIAssistant.Memory.Business.Security;
+using PersonalAIAssistant.Memory.Business.Services;
 using PersonalAIAssistant.Memory.Business.Workers;
+using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using PersonalAIAssistant.Memory.Events;
 using Polly;
@@ -29,6 +31,7 @@ public static class BusinessServiceExtensions
         {
             cfg.RegisterServicesFromAssembly(assembly);
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
+            cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(AgentTracingBehavior<,>));
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(StrictToolSchemaValidationBehavior<,>));
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(MemoryIngestionSanitizationBehavior<,>));
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(InputSanitizationBehavior<,>));
@@ -38,6 +41,9 @@ public static class BusinessServiceExtensions
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(AuthorizationBehavior<,>));
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
         });
+
+        // OpenTelemetry Agent & AI custom metrics singleton
+        services.AddSingleton<AgentMetrics>();
 
         // Resilience Pipelines
         services.AddResiliencePipeline("WorkerRetry", builder =>
@@ -79,6 +85,10 @@ public static class BusinessServiceExtensions
         services.AddScoped<IMemoryEventHandler, MemoryEventProjector>();
         services.AddScoped<IMemoryEventHandler<MemoryAddedEvent>, EmbeddingIndexingEventHandler>();
         services.AddScoped<IMemoryEventHandler<MemoryConsolidatedEvent>, MemoryConsolidatedNotificationHandler>();
+
+        // Session Context Assembler Service
+        services.AddScoped<ISessionContextBuilder, SessionContextBuilder>();
+        services.AddScoped<IAgentToolService, AgentToolService>();
 
         // Worker options and background services
         if (configureConsolidation != null)

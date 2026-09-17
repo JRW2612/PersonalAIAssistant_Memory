@@ -20,6 +20,7 @@ public sealed class StrictToolSchemaValidator : IToolSchemaValidator
                 ["rawText"] = new(JsonValueKind.String, true),
                 ["source"] = new(JsonValueKind.String, true),
                 ["tags"] = new(JsonValueKind.Array, true, JsonValueKind.String),
+                ["tags"] = new(JsonValueKind.Array, true, JsonValueKind.String),
                 ["userId"] = new(JsonValueKind.String, true),
                 ["importance"] = new(JsonValueKind.Number),
                 ["correlationId"] = new(JsonValueKind.String)
@@ -38,6 +39,28 @@ public sealed class StrictToolSchemaValidator : IToolSchemaValidator
                 ["consolidatedText"] = new(JsonValueKind.String, true),
                 ["userId"] = new(JsonValueKind.String, true),
                 ["provenanceLinks"] = new(JsonValueKind.Array, true, JsonValueKind.String)
+            },
+            ["temporal.fact.assert"] = new Dictionary<string, Field>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["subject"] = new(JsonValueKind.String, true),
+                ["predicate"] = new(JsonValueKind.String, true),
+                ["object"] = new(JsonValueKind.String, true),
+                ["confidence"] = new(JsonValueKind.Number),
+                ["source"] = new(JsonValueKind.String),
+                ["userId"] = new(JsonValueKind.String, true)
+            },
+            ["agent.core_memory_append"] = new Dictionary<string, Field>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["role"] = new(JsonValueKind.String, true),
+                ["content"] = new(JsonValueKind.String, true),
+                ["sessionId"] = new(JsonValueKind.String, true),
+                ["userId"] = new(JsonValueKind.String, true)
+            },
+            ["agent.archival_search"] = new Dictionary<string, Field>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["query"] = new(JsonValueKind.String, true),
+                ["topK"] = new(JsonValueKind.Number),
+                ["userId"] = new(JsonValueKind.String, true)
             }
         };
 

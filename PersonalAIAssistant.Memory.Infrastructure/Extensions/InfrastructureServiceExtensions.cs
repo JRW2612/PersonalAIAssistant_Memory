@@ -16,11 +16,13 @@ using PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi;
 using PersonalAIAssistant.Memory.Infrastructure.AI.Teams;
 using PersonalAIAssistant.Memory.Infrastructure.Context;
 using PersonalAIAssistant.Memory.Infrastructure.Events;
+using PersonalAIAssistant.Memory.Infrastructure.InMemory;
 using PersonalAIAssistant.Memory.Infrastructure.Messaging;
 using PersonalAIAssistant.Memory.Infrastructure.Mongo;
 using PersonalAIAssistant.Memory.Infrastructure.Security;
 using PersonalAIAssistant.Memory.Infrastructure.Sql;
 using Qdrant.Client;
+using StackExchange.Redis;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
 {
@@ -41,6 +43,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.AddScoped<IProcessingLockStore>(sp => sp.GetRequiredService<SqlReadModelRepository>());
             services.AddScoped<IRetentionQueryStore>(sp => sp.GetRequiredService<SqlReadModelRepository>());
             services.AddScoped<ITransactionalReadModelRepository>(sp => sp.GetRequiredService<SqlReadModelRepository>());
+            services.AddScoped<ITemporalFactRepository>(sp => sp.GetRequiredService<SqlReadModelRepository>());
             services.AddScoped<IProviderConnectionRepository, SqlProviderConnectionRepository>();
             services.AddScoped<IWorkloadIdentityRepository, SqlWorkloadIdentityRepository>();
 
@@ -87,6 +90,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.Configure<OpenAiOptions>(configuration.GetSection(OpenAiOptions.SectionName));
             services.Configure<GeminiOptions>(configuration.GetSection(GeminiOptions.SectionName));
             services.Configure<TeamsOptions>(configuration.GetSection(TeamsOptions.SectionName));
+            services.Configure<ConversationBufferOptions>(configuration.GetSection(ConversationBufferOptions.SectionName));
 
             services.Configure<ChunkingOptions>(configuration.GetSection("Chunking"));
             services.Configure<RetentionOptions>(configuration.GetSection(RetentionOptions.SectionName));
@@ -160,6 +164,18 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.AddScoped<IMemoryRetrievalService, MemoryRetrievalService>();
             services.AddSingleton<PersonalAIAssistant.Memory.Infrastructure.Security.AesEncryptionService>();
             services.AddSingleton<IEncryptionService, PersonalAIAssistant.Memory.Infrastructure.Security.AesGcmEncryptionService>();
+
+            // ── Conversation Buffer & Session Context Builder ────────────────
+            var redisConn = configuration.GetConnectionString("Redis");
+            if (!configuration.GetValue<bool>("UseInMemoryStore", false) && !string.IsNullOrWhiteSpace(redisConn))
+            {
+                services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConn));
+                services.AddSingleton<IConversationBuffer, RedisConversationBuffer>();
+            }
+            else
+            {
+                services.AddSingleton<IConversationBuffer, InMemoryConversationBuffer>();
+            }
 
             // ── Provider Connections & OAuth BYOK ────────────────────────────
             services.AddSingleton<IOAuthStateManager, OAuthStateManager>();

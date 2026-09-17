@@ -3,6 +3,7 @@ using PersonalAIAssistant.Memory.Core.Domains.Enums;
 using PersonalAIAssistant.Memory.Core.Domains.ValueObjects;
 using PersonalAIAssistant.Memory.Core.DTOs;
 using PersonalAIAssistant.Memory.Core.Exceptions;
+using PersonalAIAssistant.Memory.Core.Models;
 using PersonalAIAssistant.Memory.Core.Utils;
 using PersonalAIAssistant.Memory.Events;
 
@@ -28,6 +29,9 @@ public class MemoryAggregate
     public string? EmbeddingId { get; private set; }
     public IReadOnlyList<string> Tags => _tags.AsReadOnly();
     private readonly List<string> _tags = new();
+
+    public IReadOnlyList<TemporalFact> TemporalFacts => _temporalFacts.AsReadOnly();
+    private readonly List<TemporalFact> _temporalFacts = new();
 
     // Uncommitted events
     private readonly List<MemoryEvent> _uncommittedEvents = new();
@@ -241,6 +245,75 @@ public class MemoryAggregate
         Emit(evt);
     }
 
+    /// <summary>
+    /// Asserts a temporally grounded entity fact. If a prior active fact with the same
+    /// Subject and Predicate exists with a different Object, it is automatically invalidated.
+    /// </summary>
+    public void AssertTemporalFact(
+        string subject,
+        string predicate,
+        string @object,
+        DateTime? validFromUtc = null,
+        double confidence = 1.0,
+        string? source = null,
+        string? userId = null)
+    {
+        CoreGuard.NotNullOrWhiteSpace(subject, nameof(subject));
+        CoreGuard.NotNullOrWhiteSpace(predicate, nameof(predicate));
+        CoreGuard.NotNullOrWhiteSpace(@object, nameof(@object));
+        if (Status == MemoryStatus.Deleted) throw new DomainException("Cannot assert facts on a deleted memory aggregate.");
+
+        var targetId = Id.Value == Guid.Empty ? MemoryId.New() : Id;
+        var validFrom = validFromUtc ?? DateTime.UtcNow;
+
+        // Check for existing active fact with same Subject and Predicate
+        var existingFact = _temporalFacts.FirstOrDefault(f =>
+            f.IsCurrent &&
+            f.Subject.Equals(subject, StringComparison.OrdinalIgnoreCase) &&
+            f.Predicate.Equals(predicate, StringComparison.OrdinalIgnoreCase));
+
+        if (existingFact != null)
+        {
+            // If the object is identical, no contradiction
+            if (existingFact.Object.Equals(@object, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            // Contradiction detected! Invalidate the previous fact
+            var invalidationEvt = new TemporalFactInvalidatedEvent
+            {
+                AggregateId = targetId,
+                FactId = existingFact.Id,
+                Subject = existingFact.Subject,
+                Predicate = existingFact.Predicate,
+                OldObject = existingFact.Object,
+                InvalidatedAtUtc = validFrom,
+                Reason = $"Superseded by new assertion: {subject} {predicate} {@object}",
+                UserId = userId,
+                EventType = nameof(TemporalFactInvalidatedEvent)
+            };
+            Emit(invalidationEvt);
+        }
+
+        // Assert the new active fact
+        var newFactId = Guid.NewGuid();
+        var assertionEvt = new TemporalFactAssertedEvent
+        {
+            AggregateId = targetId,
+            FactId = newFactId,
+            Subject = subject.Trim(),
+            Predicate = predicate.Trim(),
+            Object = @object.Trim(),
+            ValidFromUtc = validFrom,
+            Confidence = confidence,
+            Source = source,
+            UserId = userId,
+            EventType = nameof(TemporalFactAssertedEvent)
+        };
+        Emit(assertionEvt);
+    }
+
     // ─── Emit + Apply ────────────────────────────────────────────────────────
 
     private void Emit(MemoryEvent evt)
@@ -313,6 +386,40 @@ public class MemoryAggregate
             case LegalHoldReleasedEvent:
                 IsLegalHold = false;
                 LegalHoldReason = null;
+                break;
+
+            case TemporalFactInvalidatedEvent invalidated:
+                var factToInvalidate = _temporalFacts.FirstOrDefault(f =>
+                    f.Id == invalidated.FactId ||
+                    (f.IsCurrent &&
+                     f.Subject.Equals(invalidated.Subject, StringComparison.OrdinalIgnoreCase) &&
+                     f.Predicate.Equals(invalidated.Predicate, StringComparison.OrdinalIgnoreCase)));
+
+                if (factToInvalidate != null)
+                {
+                    _temporalFacts.Remove(factToInvalidate);
+                    _temporalFacts.Add(factToInvalidate with
+                    {
+                        ValidToUtc = invalidated.InvalidatedAtUtc,
+                        IsCurrent = false
+                    });
+                }
+                break;
+
+            case TemporalFactAssertedEvent asserted:
+                if (Id.Value == Guid.Empty)
+                    Id = new MemoryId(asserted.AggregateId);
+
+                _temporalFacts.Add(new TemporalFact(
+                    Id: asserted.FactId,
+                    Subject: asserted.Subject,
+                    Predicate: asserted.Predicate,
+                    Object: asserted.Object,
+                    ValidFromUtc: asserted.ValidFromUtc,
+                    ValidToUtc: null,
+                    IsCurrent: true,
+                    Confidence: asserted.Confidence,
+                    Source: asserted.Source));
                 break;
         }
 

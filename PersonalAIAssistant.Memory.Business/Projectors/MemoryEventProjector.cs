@@ -14,11 +14,16 @@ public class MemoryEventProjector : IMemoryEventHandler
 {
     private readonly IReadModelRepository _readRepo;
     private readonly IEventIdempotencyStore _idempotencyStore;
+    private readonly ITemporalFactRepository _temporalFactRepo;
 
-    public MemoryEventProjector(IReadModelRepository readRepo, IEventIdempotencyStore idempotencyStore)
+    public MemoryEventProjector(
+        IReadModelRepository readRepo,
+        IEventIdempotencyStore idempotencyStore,
+        ITemporalFactRepository temporalFactRepo)
     {
         _readRepo = readRepo;
         _idempotencyStore = idempotencyStore;
+        _temporalFactRepo = temporalFactRepo;
     }
 
     // ─── IMemoryEventHandler ─────────────────────────────────────────────────
@@ -167,6 +172,35 @@ public class MemoryEventProjector : IMemoryEventHandler
         await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
     }
 
+    public async Task Handle(TemporalFactAssertedEvent evt, CancellationToken ct)
+    {
+        if (evt == null) return;
+        if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+
+        var fact = new TemporalFact(
+            Id: evt.FactId,
+            Subject: evt.Subject,
+            Predicate: evt.Predicate,
+            Object: evt.Object,
+            ValidFromUtc: evt.ValidFromUtc,
+            ValidToUtc: null,
+            IsCurrent: true,
+            Confidence: evt.Confidence,
+            Source: evt.Source);
+
+        await _temporalFactRepo.UpsertFactAsync(fact, evt.UserId ?? string.Empty, ct);
+        await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
+    }
+
+    public async Task Handle(TemporalFactInvalidatedEvent evt, CancellationToken ct)
+    {
+        if (evt == null) return;
+        if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+
+        await _temporalFactRepo.InvalidateFactAsync(evt.UserId ?? string.Empty, evt.Subject, evt.Predicate, evt.InvalidatedAtUtc, ct);
+        await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
+    }
+
     // ─── Batch handler ───────────────────────────────────────────────────────
 
     public async Task Handle(IEnumerable<MemoryEvent> events, CancellationToken ct)
@@ -218,6 +252,8 @@ public class MemoryEventProjector : IMemoryEventHandler
             case MemoryArchivedEvent archived: await Handle(archived, ct); break;
             case MemoryDeletedEvent deleted: await Handle(deleted, ct); break;
             case SnapshotCreatedEvent snapshot: await Handle(snapshot, ct); break;
+            case TemporalFactAssertedEvent factAsserted: await Handle(factAsserted, ct); break;
+            case TemporalFactInvalidatedEvent factInvalidated: await Handle(factInvalidated, ct); break;
             default:
                 await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
                 break;

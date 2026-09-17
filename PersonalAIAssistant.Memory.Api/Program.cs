@@ -264,6 +264,10 @@ builder.Services.AddAiProviders(builder.Configuration);
 // Bind Outbox options (cleanup retention and interval)
 builder.Services.Configure<PersonalAIAssistant.Memory.Infrastructure.Messaging.OutboxOptions>(builder.Configuration.GetSection("Outbox"));
 
+// Bind Agent Tracing options (in-memory buffer + OTLP export)
+builder.Services.Configure<PersonalAIAssistant.Memory.Core.Models.AgentTracingOptions>(builder.Configuration.GetSection(PersonalAIAssistant.Memory.Core.Models.AgentTracingOptions.SectionName));
+builder.Services.AddSingleton<PersonalAIAssistant.Memory.Core.Interfaces.AI.IAgentTraceRepository, PersonalAIAssistant.Memory.Infrastructure.InMemory.InMemoryAgentTraceRepository>();
+
 if (useInMemory)
 {
     builder.Services.AddSingleton<IEventStore, PersonalAIAssistant.Memory.Infrastructure.Mongo.InMemoryEventStore>();

@@ -14,6 +14,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Context
         public DbSet<ProviderConnectionEntity> ProviderConnections { get; set; } = null!;
         public DbSet<ProviderAuditLogEntity> ProviderAuditLogs { get; set; } = null!;
         public DbSet<WorkloadIdentityEntity> WorkloadIdentities { get; set; } = null!;
+        public DbSet<TemporalFactEntity> TemporalFacts { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -78,6 +79,19 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Context
                 b.Property(x => x.Status).HasConversion<int>();
                 b.Property(x => x.CreatedAtUtc).IsRequired();
                 b.Property(x => x.UpdatedAtUtc).IsRequired();
+            });
+
+            modelBuilder.Entity<TemporalFactEntity>(b =>
+            {
+                b.HasKey(x => x.Id);
+                b.HasIndex(x => new { x.UserId, x.Subject, x.Predicate, x.IsCurrent });
+                b.HasIndex(x => new { x.UserId, x.IsCurrent });
+                b.Property(x => x.UserId).IsRequired().HasMaxLength(128);
+                b.Property(x => x.Subject).IsRequired().HasMaxLength(256);
+                b.Property(x => x.Predicate).IsRequired().HasMaxLength(128);
+                b.Property(x => x.Object).IsRequired().HasMaxLength(1000);
+                b.Property(x => x.ValidFromUtc).IsRequired();
+                b.Property(x => x.IsCurrent).IsRequired();
             });
 
             base.OnModelCreating(modelBuilder);

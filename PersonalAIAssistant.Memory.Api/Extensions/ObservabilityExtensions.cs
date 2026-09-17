@@ -23,6 +23,9 @@ public static class ObservabilityExtensions
         builder.Host.UseSerilog();
 
         // 2. OpenTelemetry Tracing & Metrics
+        var otlpEndpoint = builder.Configuration["Tracing:OTLP:Endpoint"]
+                        ?? builder.Configuration["Observability:OtlpEndpoint"];
+
         builder.Services.AddOpenTelemetry()
             .ConfigureResource(resource => resource.AddService("PersonalAIAssistant.Memory.Api"))
             .WithTracing(tracing =>
@@ -30,12 +33,23 @@ public static class ObservabilityExtensions
                 tracing
                     .AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation();
+
+                if (!string.IsNullOrWhiteSpace(otlpEndpoint) && Uri.TryCreate(otlpEndpoint, UriKind.Absolute, out var uri))
+                {
+                    tracing.AddOtlpExporter(opt => opt.Endpoint = uri);
+                }
             })
             .WithMetrics(metrics =>
             {
                 metrics
                     .AddAspNetCoreInstrumentation()
-                    .AddHttpClientInstrumentation();
+                    .AddHttpClientInstrumentation()
+                    .AddMeter("PersonalAIAssistant.Memory.AI");
+
+                if (!string.IsNullOrWhiteSpace(otlpEndpoint) && Uri.TryCreate(otlpEndpoint, UriKind.Absolute, out var uri))
+                {
+                    metrics.AddOtlpExporter(opt => opt.Endpoint = uri);
+                }
             });
 
         // 3. Health Checks

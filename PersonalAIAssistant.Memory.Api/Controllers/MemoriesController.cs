@@ -231,4 +231,59 @@ public class MemoriesController : ControllerBase
         var count = await _mediator.Send(command, ct);
         return Ok(new PurgeResponseDto(userId, count, "Purged"));
     }
+
+    /// <summary>
+    /// Records a new message turn (user or assistant) to the active session conversation buffer.
+    /// </summary>
+    [HttpPost("session/{sessionId}/turns")]
+    [EnableRateLimiting("MemoryWritePolicy")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> AppendSessionTurn(string sessionId, [FromBody] AppendTurnDto dto, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            return BadRequest("SessionId must not be empty.");
+        }
+
+        var userId = GetCurrentUserId();
+        var command = new AppendConversationTurnCommand(
+            UserId: userId,
+            SessionId: sessionId,
+            Role: dto.Role,
+            Content: dto.Content);
+
+        await _mediator.Send(command, ct);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Builds a combined system prompt context containing the active rolling conversation turns
+    /// and semantically relevant long-term memories retrieved for the current message.
+    /// </summary>
+    [HttpPost("session/{sessionId}/context")]
+    [EnableRateLimiting("MemoryReadPolicy")]
+    [ProducesResponseType(typeof(SessionContext), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetSessionContext(string sessionId, [FromBody] GetSessionContextDto dto, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            return BadRequest("SessionId must not be empty.");
+        }
+
+        var userId = GetCurrentUserId();
+        var safeTopK = Math.Clamp(dto.TopK <= 0 ? 5 : dto.TopK, 1, 50);
+        var safeMaxTurns = Math.Clamp(dto.MaxBufferTurns <= 0 ? 10 : dto.MaxBufferTurns, 1, 100);
+
+        var query = new BuildSessionContextQuery(
+            UserId: userId,
+            SessionId: sessionId,
+            CurrentMessage: dto.CurrentMessage ?? string.Empty,
+            TopK: safeTopK,
+            MaxBufferTurns: safeMaxTurns);
+
+        var context = await _mediator.Send(query, ct);
+        return Ok(context);
+    }
 }
