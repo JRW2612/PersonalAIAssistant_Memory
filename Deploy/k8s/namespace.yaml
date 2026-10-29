@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bfsi-memory-prod
+  labels:
+    name: bfsi-memory-prod
+    app.kubernetes.io/name: personal-ai-assistant-memory
+    app.kubernetes.io/part-of: bfsi-ai-platform
+    environment: production
+    sovereign-region: india
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

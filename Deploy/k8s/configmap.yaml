@@ -1,0 +1,34 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bfsi-memory-config
+  namespace: bfsi-memory-prod
+  labels:
+    app: memory-api
+    tier: backend
+data:
+  ASPNETCORE_ENVIRONMENT: "Production"
+  ASPNETCORE_URLS: "http://+:8080"
+  
+  # Sovereign Indian Cloud Regions (RBI Compliance: Circular DPSS.CO.OD.No. 2785/06.11.60/2017-18)
+  SOVEREIGN_REGION_AWS: "ap-south-1"
+  SOVEREIGN_REGION_AZURE: "centralindia"
+  CROSS_BORDER_TRANSIT_ALLOWED: "false"
+
+  # CERT-In Time Synchronization & Audit Retention (Section 70B IT Act, 2000)
+  NTP_PRIMARY_SERVER: "time.nplindia.org"
+  NTP_SECONDARY_SERVER: "time.nic.in"
+  AUDIT_LOG_RETENTION_DAYS: "180"
+  CERTIN_INCIDENT_REPORTING_WINDOW_HOURS: "6"
+
+  # FIPS 140-2 Level 3 HSM Configuration
+  HSM_PROVIDER: "AzureKeyVaultManagedHsm"
+  HSM_KEY_VAULT_URI: "https://bfsi-core-prod-hsm.managedhsm.azure.net/"
+  HSM_MASTER_KEY_NAME: "BfsiCoreMemoryMasterKek"
+  HSM_FIPS_COMPLIANCE_LEVEL: "FIPS 140-2 Level 3"
+
+  # Concurrency & High Throughput Tuning (Target 5,000+ req/sec)
+  DOTNET_ThreadPool_MinThreads: "128"
+  CONSOLIDATION_BATCH_SIZE: "50"
+  MAX_CONCURRENT_LLM_REQUESTS: "25"
+  RATE_LIMIT_PER_MINUTE_PER_TENANT: "100000"

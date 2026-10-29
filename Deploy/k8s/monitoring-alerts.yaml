@@ -1,0 +1,71 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: bfsi-memory-alert-rules
+  namespace: bfsi-memory-prod
+  labels:
+    app: memory-api
+    role: alert-rules
+spec:
+  groups:
+    - name: bfsi.memory.rules
+      rules:
+        # P1 - Critical: OutboxQueueBacklogHigh
+        - alert: OutboxQueueBacklogHigh
+          expr: outbox_messages_pending_total{namespace="bfsi-memory-prod"} > 500
+          for: 5m
+          labels:
+            severity: P1-Critical
+            tier: backend
+          annotations:
+            summary: "Outbox Queue backlog exceeded 500 messages"
+            description: "Outbox pending message count is {{ $value }} (threshold > 500) for more than 5 minutes. Outbox worker pod may have crashed or message broker is rejecting connections."
+            action: "Check outbox worker pod logs, restart stalled workers, check broker disk/memory alarms."
+
+        # P1 - Critical: DlqArrivalRate
+        - alert: DlqArrivalRate
+          expr: rate(access_grants_dlq_total{namespace="bfsi-memory-prod"}[5m]) > 0
+          for: 1m
+          labels:
+            severity: P1-Critical
+            tier: backend
+          annotations:
+            summary: "Messages arriving in Dead Letter Queue (DLQ)"
+            description: "DLQ arrival rate is {{ $value }} messages/sec. Poison messages detected or downstream IAM rejecting requests due to bad credentials or schema mismatch."
+            action: "Check DLQ payload in database, inspect exception logs, halt bad client if payload corrupted."
+
+        # P2 - Major: DownstreamLatencyP99
+        - alert: DownstreamLatencyP99
+          expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{namespace="bfsi-memory-prod"}[10m])) by (le)) > 3.0
+          for: 10m
+          labels:
+            severity: P2-Major
+            tier: backend
+          annotations:
+            summary: "Downstream P99 latency exceeded 3000ms"
+            description: "Downstream P99 latency is {{ $value }}s for > 10 minutes. Downstream access provider throttling or database contention."
+            action: "Verify downstream provider status page, enable circuit breaker / backpressure."
+
+        # P2 - Major: ReconciliationDriftHigh
+        - alert: ReconciliationDriftHigh
+          expr: rate(access_grants_reconciliation_drift_total{namespace="bfsi-memory-prod"}[1h]) > 10
+          for: 15m
+          labels:
+            severity: P2-Major
+            tier: backend
+          annotations:
+            summary: "Reconciliation drift rate exceeded threshold"
+            description: "Reconciliation drift rate is {{ $value }} events/hr (threshold > 10). Network instability causing frequent timeouts where external service succeeds silently."
+            action: "Check cross-datacenter network links, inspect HTTP timeout budgets."
+
+        # P3 - Warning: DatabaseTableBloat
+        - alert: DatabaseTableBloat
+          expr: outbox_messages_processed_total{namespace="bfsi-memory-prod"} > 100000
+          for: 30m
+          labels:
+            severity: P3-Warning
+            tier: backend
+          annotations:
+            summary: "Outbox processed table bloat detected"
+            description: "Processed outbox message count is {{ $value }} (threshold > 100,000). Outbox cleanup worker stopped or batch size too small."
+            action: "Verify OutboxCleanupWorker execution, run manual batch purge."
