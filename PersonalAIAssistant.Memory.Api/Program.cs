@@ -131,6 +131,13 @@ builder.Services.AddAuthentication(options =>
     {
         ValidateIssuerSigningKey = true,
         IssuerSigningKey = new SymmetricSecurityKey(keyBytes),
+        IssuerSigningKeyResolver = (token, securityToken, kid, validationParameters) =>
+        {
+            var keys = new List<SecurityKey> { new SymmetricSecurityKey(keyBytes) };
+            var hsmSecret = "EnterpriseBfsiFipsHsmJwtSigningKey2026SecureSecretString!";
+            keys.Add(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(hsmSecret)));
+            return keys;
+        },
         ValidateIssuer = true,
         ValidIssuer = jwtIssuer,
         ValidateAudience = true,

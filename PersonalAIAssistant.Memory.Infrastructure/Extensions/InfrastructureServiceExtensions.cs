@@ -175,8 +175,34 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.AddSingleton<ITextChunker, TextChunker>();
             services.AddSingleton<IRerankingScorer, DefaultRerankingScorer>();
             services.AddScoped<IMemoryRetrievalService, MemoryRetrievalService>();
+            
+            // ── FIPS 140-2 Level 3 HSM & Cloud Key Vault + Envelope Encryption ──
+            services.Configure<PersonalAIAssistant.Memory.Core.Models.Security.HsmOptions>(configuration.GetSection(PersonalAIAssistant.Memory.Core.Models.Security.HsmOptions.SectionName));
+            services.Configure<PersonalAIAssistant.Memory.Core.Models.Security.EnterpriseSsoOptions>(configuration.GetSection(PersonalAIAssistant.Memory.Core.Models.Security.EnterpriseSsoOptions.SectionName));
+
+            services.AddSingleton<PersonalAIAssistant.Memory.Infrastructure.Security.SimulatedFipsHsmKeyVaultService>();
+            services.AddHttpClient<PersonalAIAssistant.Memory.Infrastructure.Security.AzureKeyVaultHsmService>();
+            services.AddHttpClient<PersonalAIAssistant.Memory.Infrastructure.Security.AwsKmsHsmService>();
+
+            services.AddSingleton<IHsmKeyVaultService>(sp =>
+            {
+                var hsmOpts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<PersonalAIAssistant.Memory.Core.Models.Security.HsmOptions>>().Value;
+                if (string.Equals(hsmOpts.Provider, "AzureKeyVaultManagedHsm", StringComparison.OrdinalIgnoreCase))
+                {
+                    return sp.GetRequiredService<PersonalAIAssistant.Memory.Infrastructure.Security.AzureKeyVaultHsmService>();
+                }
+                if (string.Equals(hsmOpts.Provider, "AwsKmsHsm", StringComparison.OrdinalIgnoreCase))
+                {
+                    return sp.GetRequiredService<PersonalAIAssistant.Memory.Infrastructure.Security.AwsKmsHsmService>();
+                }
+                return sp.GetRequiredService<PersonalAIAssistant.Memory.Infrastructure.Security.SimulatedFipsHsmKeyVaultService>();
+            });
+
             services.AddSingleton<PersonalAIAssistant.Memory.Infrastructure.Security.AesEncryptionService>();
-            services.AddSingleton<IEncryptionService, PersonalAIAssistant.Memory.Infrastructure.Security.AesGcmEncryptionService>();
+            services.AddSingleton<PersonalAIAssistant.Memory.Infrastructure.Security.AesGcmEncryptionService>();
+            services.AddSingleton<IEncryptionService, PersonalAIAssistant.Memory.Infrastructure.Security.HsmEnvelopeEncryptionService>();
+
+            services.AddScoped<IEnterpriseIdentityProviderService, PersonalAIAssistant.Memory.Infrastructure.Security.EnterpriseIdentityProviderService>();
 
             // ── Conversation Buffer & Session Context Builder ────────────────
             var redisConn = configuration.GetConnectionString("Redis");
