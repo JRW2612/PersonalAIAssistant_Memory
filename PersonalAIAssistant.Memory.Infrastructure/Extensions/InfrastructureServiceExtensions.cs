@@ -8,6 +8,7 @@ using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
 using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using PersonalAIAssistant.Memory.Core.Interfaces.Persistence;
 using PersonalAIAssistant.Memory.Core.Interfaces.Security;
+using PersonalAIAssistant.Memory.Core.Interfaces.Safety;
 using PersonalAIAssistant.Memory.Core.Models;
 using PersonalAIAssistant.Memory.Events;
 using PersonalAIAssistant.Memory.Infrastructure.AI;
@@ -19,6 +20,7 @@ using PersonalAIAssistant.Memory.Infrastructure.Events;
 using PersonalAIAssistant.Memory.Infrastructure.InMemory;
 using PersonalAIAssistant.Memory.Infrastructure.Messaging;
 using PersonalAIAssistant.Memory.Infrastructure.Mongo;
+using PersonalAIAssistant.Memory.Infrastructure.Safety;
 using PersonalAIAssistant.Memory.Infrastructure.Security;
 using PersonalAIAssistant.Memory.Infrastructure.Sql;
 using Qdrant.Client;
@@ -46,6 +48,12 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.AddScoped<ITemporalFactRepository>(sp => sp.GetRequiredService<SqlReadModelRepository>());
             services.AddScoped<IProviderConnectionRepository, SqlProviderConnectionRepository>();
             services.AddScoped<IWorkloadIdentityRepository, SqlWorkloadIdentityRepository>();
+            services.AddScoped<IEmployeeRepository, SqlEmployeeRepository>();
+            services.AddScoped<IAccessAssignmentRepository, SqlAccessAssignmentRepository>();
+            services.AddSingleton<IExternalAccessClient, DefaultExternalAccessClient>();
+            services.AddScoped<AccessAssignmentConsumer>();
+            services.AddSingleton<ReconciliationWorker>();
+            services.AddHostedService(sp => sp.GetRequiredService<ReconciliationWorker>());
 
             // Register MongoDB client, Database & Event Store / Snapshot Repository
             services.AddSingleton<IMongoClient>(new MongoClient(mongoConnectionString));
@@ -104,6 +112,11 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.AddSingleton<ISecurityAuditLogger, SecurityAuditLogger>();
             services.AddSingleton<IMemoryIngestionSanitizer, MemoryIngestionSanitizer>();
             services.AddSingleton<IToolSchemaValidator, StrictToolSchemaValidator>();
+
+            // Safety Interlocks & Trajectory Evaluation (Physical World Safety Framework)
+            services.AddSingleton<IToolInterlockService, ToolInterlockService>();
+            services.AddSingleton<ITrajectoryEpisodeRepository, InMemoryTrajectoryEpisodeRepository>();
+            services.AddSingleton<ISafetyEvaluationService, SafetyEvaluationService>();
 
             // Provider clients address either the private AI gateway (if enabled) or official provider endpoints directly.
             var gateway = configuration.GetSection(AiGatewayOptions.SectionName).Get<AiGatewayOptions>() ?? new AiGatewayOptions();

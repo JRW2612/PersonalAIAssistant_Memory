@@ -33,14 +33,19 @@ public class AgentToolServiceTests
     {
         var tools = _service.GetToolDefinitions();
 
-        tools.Should().HaveCount(5);
+        tools.Should().HaveCount(10);
         tools.Select(t => t.Name).Should().Contain(new[]
         {
             "temporal_fact_upsert",
             "core_memory_append",
             "core_memory_replace",
             "archival_memory_insert",
-            "archival_memory_search"
+            "archival_memory_search",
+            "centrifuge_spin",
+            "arm_joint_move",
+            "liquid_stir_reagent",
+            "task_abort",
+            "task_complete"
         });
     }
 

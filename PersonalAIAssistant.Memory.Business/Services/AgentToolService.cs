@@ -5,28 +5,42 @@ using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Business.Queries;
 using PersonalAIAssistant.Memory.Core.Domains.Enums;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
+using PersonalAIAssistant.Memory.Core.Interfaces.Safety;
 using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using PersonalAIAssistant.Memory.Core.Models;
+using PersonalAIAssistant.Memory.Core.Models.Safety;
 
 namespace PersonalAIAssistant.Memory.Business.Services;
 
 /// <summary>
 /// Implements Letta/MemGPT-style agent self-editing tools, allowing the LLM agent to
-/// read, append, replace, and assert temporal facts during its reasoning loops.
+/// read, append, replace, and assert temporal facts during its reasoning loops,
+/// alongside physical actuator and scientific laboratory tools subject to pre-execution safety interlocks.
 /// </summary>
 public class AgentToolService : IAgentToolService
 {
     private readonly IMediator _mediator;
     private readonly IToolSchemaValidator _schemaValidator;
+    private readonly IToolInterlockService? _interlockService;
     private readonly ILogger<AgentToolService> _logger;
 
     public AgentToolService(
         IMediator mediator,
         IToolSchemaValidator schemaValidator,
         ILogger<AgentToolService> logger)
+        : this(mediator, schemaValidator, null, logger)
+    {
+    }
+
+    public AgentToolService(
+        IMediator mediator,
+        IToolSchemaValidator schemaValidator,
+        IToolInterlockService? interlockService,
+        ILogger<AgentToolService> logger)
     {
         _mediator = mediator;
         _schemaValidator = schemaValidator;
+        _interlockService = interlockService;
         _logger = logger;
     }
 
@@ -107,6 +121,80 @@ public class AgentToolService : IAgentToolService
                     },
                     required = new[] { "query" }
                 }
+            ),
+            new(
+                Name: "centrifuge_spin",
+                Description: "Set spin parameters and activate laboratory benchtop centrifuge. Enforces rotor rating safety limits and lid latch interlocks.",
+                Parameters: new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        rpm = new { type = "number", description = "Target rotational speed in RPM (max safe: 10,000)." },
+                        duration_seconds = new { type = "number", description = "Spin duration in seconds." },
+                        lid_closed = new { type = "boolean", description = "Whether the safety lid is securely closed." }
+                    },
+                    required = new[] { "rpm", "duration_seconds" }
+                }
+            ),
+            new(
+                Name: "arm_joint_move",
+                Description: "Command robotic arm end-effector to 3D Cartesian target coordinates with contact force limit. Subject to keep-out spatial zones.",
+                Parameters: new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        x = new { type = "number", description = "X coordinate in meters." },
+                        y = new { type = "number", description = "Y coordinate in meters." },
+                        z = new { type = "number", description = "Z coordinate in meters." },
+                        force_n = new { type = "number", description = "Maximum commanded contact force in Newtons (max safe: 100 N)." }
+                    },
+                    required = new[] { "x", "y", "z" }
+                }
+            ),
+            new(
+                Name: "liquid_stir_reagent",
+                Description: "Stir or mix liquid reagent in active workstation. Prohibited while foam or froth stands above rim without settling.",
+                Parameters: new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        stir_speed = new { type = "number", description = "Stir speed setting (1 to 10)." },
+                        duration_seconds = new { type = "number", description = "Stir duration in seconds." },
+                        froth_settled = new { type = "boolean", description = "Whether froth has settled below rim." }
+                    },
+                    required = new[] { "stir_speed" }
+                }
+            ),
+            new(
+                Name: "task_abort",
+                Description: "Deliberately halt execution, retract actuators clear of spills or obstacles, and file an explicit failure/incident report.",
+                Parameters: new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        reason = new { type = "string", description = "Reason for halting execution." },
+                        diagnosis = new { type = "string", description = "Root cause diagnosis of the detected anomaly." }
+                    },
+                    required = new[] { "reason" }
+                }
+            ),
+            new(
+                Name: "task_complete",
+                Description: "Mark physical workflow as concluded with final outcome status and calibration report.",
+                Parameters: new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        success = new { type = "boolean", description = "Whether the objective was achieved." },
+                        report = new { type = "string", description = "Final post-condition assessment." }
+                    },
+                    required = new[] { "success" }
+                }
             )
         };
     }
@@ -120,11 +208,31 @@ public class AgentToolService : IAgentToolService
 
         try
         {
+            var effectiveArgs = request.Arguments;
+
+            // Pre-execution Safety Interlocks
+            if (_interlockService != null)
+            {
+                var interlockResult = _interlockService.Evaluate(request.ToolName, effectiveArgs, InterlockMode.Interlocked);
+                if (!interlockResult.Allowed)
+                {
+                    throw new InterlockViolationException(
+                        request.ToolName,
+                        interlockResult.Violations,
+                        $"[SAFETY INTERLOCK TRIPPED] {interlockResult.RejectionReason}");
+                }
+
+                if (interlockResult.ModifiedArguments.HasValue)
+                {
+                    effectiveArgs = interlockResult.ModifiedArguments.Value;
+                }
+            }
+
             switch (request.ToolName.ToLowerInvariant())
             {
                 case "temporal_fact_upsert":
                 {
-                    var args = request.Arguments;
+                    var args = effectiveArgs;
                     var subject = args.GetProperty("subject").GetString()!;
                     var predicate = args.GetProperty("predicate").GetString()!;
                     var objectValue = args.GetProperty("object").GetString()!;
@@ -152,7 +260,7 @@ public class AgentToolService : IAgentToolService
 
                 case "core_memory_append":
                 {
-                    var args = request.Arguments;
+                    var args = effectiveArgs;
                     var role = args.GetProperty("role").GetString()!;
                     var content = args.GetProperty("content").GetString()!;
                     var sessionId = args.TryGetProperty("sessionId", out var s) && !string.IsNullOrEmpty(s.GetString())
@@ -174,7 +282,7 @@ public class AgentToolService : IAgentToolService
 
                 case "core_memory_replace":
                 {
-                    var args = request.Arguments;
+                    var args = effectiveArgs;
                     var memoryId = Guid.Parse(args.GetProperty("memoryId").GetString()!);
                     var rawText = args.GetProperty("rawText").GetString()!;
 
@@ -192,7 +300,7 @@ public class AgentToolService : IAgentToolService
 
                 case "archival_memory_insert":
                 {
-                    var args = request.Arguments;
+                    var args = effectiveArgs;
                     var text = args.GetProperty("text").GetString()!;
                     var importanceStr = args.TryGetProperty("importance", out var imp) ? imp.GetString() : "Medium";
                     var importance = Enum.TryParse<MemoryImportance>(importanceStr, true, out var parsed) ? parsed : MemoryImportance.Medium;
@@ -222,7 +330,7 @@ public class AgentToolService : IAgentToolService
 
                 case "archival_memory_search":
                 {
-                    var args = request.Arguments;
+                    var args = effectiveArgs;
                     var query = args.GetProperty("query").GetString()!;
                     var topK = args.TryGetProperty("topK", out var k) ? Math.Clamp(k.GetInt32(), 1, 20) : 5;
 
@@ -247,6 +355,57 @@ public class AgentToolService : IAgentToolService
                                 m.CreatedAt
                             })
                         });
+                }
+
+                case "centrifuge_spin":
+                {
+                    var rpm = effectiveArgs.TryGetProperty("rpm", out var r) ? r.GetDouble() : 0.0;
+                    var duration = effectiveArgs.TryGetProperty("duration_seconds", out var d) ? d.GetDouble() : 30.0;
+                    return new AgentToolExecutionResponse(
+                        ToolName: request.ToolName,
+                        Success: true,
+                        Output: new { status = "spinning", rpm, duration_seconds = duration });
+                }
+
+                case "arm_joint_move":
+                {
+                    var x = effectiveArgs.GetProperty("x").GetDouble();
+                    var y = effectiveArgs.GetProperty("y").GetDouble();
+                    var z = effectiveArgs.GetProperty("z").GetDouble();
+                    var force = effectiveArgs.TryGetProperty("force_n", out var f) ? f.GetDouble() : 20.0;
+                    return new AgentToolExecutionResponse(
+                        ToolName: request.ToolName,
+                        Success: true,
+                        Output: new { status = "moved", x, y, z, force_n = force });
+                }
+
+                case "liquid_stir_reagent":
+                {
+                    var speed = effectiveArgs.TryGetProperty("stir_speed", out var s) ? s.GetDouble() : 1.0;
+                    return new AgentToolExecutionResponse(
+                        ToolName: request.ToolName,
+                        Success: true,
+                        Output: new { status = "stirred", stir_speed = speed });
+                }
+
+                case "task_abort":
+                {
+                    var reason = effectiveArgs.GetProperty("reason").GetString()!;
+                    var diagnosis = effectiveArgs.TryGetProperty("diagnosis", out var diag) ? diag.GetString() : null;
+                    return new AgentToolExecutionResponse(
+                        ToolName: request.ToolName,
+                        Success: true,
+                        Output: new { status = "aborted", deliberateHalt = true, reason, diagnosis });
+                }
+
+                case "task_complete":
+                {
+                    var success = effectiveArgs.GetProperty("success").GetBoolean();
+                    var report = effectiveArgs.TryGetProperty("report", out var rep) ? rep.GetString() : null;
+                    return new AgentToolExecutionResponse(
+                        ToolName: request.ToolName,
+                        Success: true,
+                        Output: new { status = "completed", success, report });
                 }
 
                 default:

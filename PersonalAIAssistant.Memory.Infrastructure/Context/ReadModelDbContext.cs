@@ -15,6 +15,9 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Context
         public DbSet<ProviderAuditLogEntity> ProviderAuditLogs { get; set; } = null!;
         public DbSet<WorkloadIdentityEntity> WorkloadIdentities { get; set; } = null!;
         public DbSet<TemporalFactEntity> TemporalFacts { get; set; } = null!;
+        public DbSet<PersonalAIAssistant.Memory.Core.Models.EmployeeRecord> EmployeeRecords { get; set; } = null!;
+        public DbSet<AccessAssignmentEntity> AccessAssignments { get; set; } = null!;
+        public DbSet<PersonalAIAssistant.Memory.Infrastructure.EF.Entities.EfOutboxMessage> OutboxMessages { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -92,6 +95,38 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Context
                 b.Property(x => x.Object).IsRequired().HasMaxLength(1000);
                 b.Property(x => x.ValidFromUtc).IsRequired();
                 b.Property(x => x.IsCurrent).IsRequired();
+            });
+
+            modelBuilder.Entity<PersonalAIAssistant.Memory.Core.Models.EmployeeRecord>(b =>
+            {
+                b.HasKey(x => x.Id);
+                b.Property(x => x.UserId).IsRequired().HasMaxLength(128);
+                b.Property(x => x.FullName).IsRequired().HasMaxLength(256);
+                b.Property(x => x.Department).IsRequired().HasMaxLength(128);
+                b.Property(x => x.Salary).HasPrecision(18, 2);
+                b.Property(x => x.SocialSecurityNumber).HasMaxLength(64);
+                b.HasIndex(x => x.UserId);
+            });
+
+            modelBuilder.Entity<AccessAssignmentEntity>(b =>
+            {
+                b.HasKey(x => x.Id);
+                b.HasIndex(x => x.IdempotencyKey).IsUnique();
+                b.HasIndex(x => new { x.Status, x.CreatedAtUtc });
+                b.Property(x => x.UserId).IsRequired().HasMaxLength(128);
+                b.Property(x => x.TargetResourceId).IsRequired().HasMaxLength(256);
+                b.Property(x => x.PermissionLevel).IsRequired().HasMaxLength(64);
+                b.Property(x => x.IdempotencyKey).IsRequired().HasMaxLength(256);
+                b.Property(x => x.Status).HasConversion<int>();
+            });
+
+            modelBuilder.Entity<PersonalAIAssistant.Memory.Infrastructure.EF.Entities.EfOutboxMessage>(b =>
+            {
+                b.HasKey(o => o.Id);
+                b.Property(o => o.MessageType).IsRequired().HasMaxLength(200);
+                b.Property(o => o.Payload).IsRequired();
+                b.Property(o => o.OccurredAt).IsRequired();
+                b.HasIndex(o => o.DispatchedAt);
             });
 
             base.OnModelCreating(modelBuilder);

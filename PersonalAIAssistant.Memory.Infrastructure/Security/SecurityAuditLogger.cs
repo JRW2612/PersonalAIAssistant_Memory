@@ -110,5 +110,12 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Security
                     userId, provider, operation, reason, DateTime.UtcNow);
             }
         }
+
+        public void LogCrossTenantAttempt(string callerUserId, string callerTenantId, string resourceId, string targetTenantId, string action)
+        {
+            _logger.LogWarning(
+                "[SECURITY AUDIT] Action={Action} | Status=BLOCKED | Threat=CROSS_TENANT_VIOLATION | CallerUser={CallerUser} | CallerTenant={CallerTenant} | TargetTenant={TargetTenant} | ResourceId={ResourceId} | Timestamp={Timestamp}",
+                action, callerUserId, callerTenantId, targetTenantId, resourceId, DateTime.UtcNow);
+        }
     }
 }

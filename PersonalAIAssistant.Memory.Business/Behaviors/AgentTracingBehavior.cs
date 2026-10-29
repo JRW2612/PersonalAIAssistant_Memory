@@ -9,6 +9,7 @@ using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.Common;
 using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using PersonalAIAssistant.Memory.Core.Models;
+using PersonalAIAssistant.Memory.Core.Models.Safety;
 
 namespace PersonalAIAssistant.Memory.Business.Behaviors;
 
@@ -137,6 +138,7 @@ public sealed class AgentTracingBehavior<TRequest, TResponse>
         UnauthorizedAccessException => AgentErrorCategory.Unauthorized,
         KeyNotFoundException        => AgentErrorCategory.NotFound,
         ConcurrencyException        => AgentErrorCategory.Concurrency,
+        InterlockViolationException => AgentErrorCategory.InterlockViolation,
         HttpRequestException        => AgentErrorCategory.AiProviderError,
         InvalidOperationException ioe when ioe.Message.Contains("AI", StringComparison.OrdinalIgnoreCase) ||
                                            ioe.Message.Contains("provider", StringComparison.OrdinalIgnoreCase)

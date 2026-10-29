@@ -18,5 +18,6 @@ namespace PersonalAIAssistant.Memory.Core.Interfaces.Security
         void LogProviderRevoked(string userId, string provider, string reason);
         void LogProviderTokenRefreshed(string userId, string provider);
         void LogProviderAccessAttempt(string userId, string provider, string operation, string outcome, string? reason = null);
+        void LogCrossTenantAttempt(string callerUserId, string callerTenantId, string resourceId, string targetTenantId, string action);
     }
 }

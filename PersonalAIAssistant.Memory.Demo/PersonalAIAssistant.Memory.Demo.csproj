@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\PersonalAIAssistant.Memory.Business\PersonalAIAssistant.Memory.Business.csproj" />
     <ProjectReference Include="..\PersonalAIAssistant.Memory.Infrastructure\PersonalAIAssistant.Memory.Infrastructure.csproj" />
+    <ProjectReference Include="..\PersonalAIAssistant.Memory.Api\PersonalAIAssistant.Memory.Api.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -12,8 +13,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
   </ItemGroup>
 
   <PropertyGroup>

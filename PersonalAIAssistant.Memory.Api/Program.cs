@@ -146,6 +146,10 @@ builder.Services.AddAuthorization(options =>
         .Build();
 });
 
+// Resource-Based Authorization Handlers
+builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, PersonalAIAssistant.Memory.Api.Security.EmployeeAuthorizationHandler>();
+builder.Services.AddHealthChecks().AddCheck<PersonalAIAssistant.Memory.Api.Health.OutboxHealthCheck>("outbox_health", tags: new[] { "ready", "deep" });
+
 // Rate limiting to defend against brute-force and LLM quota exhaustion
 builder.Services.AddRateLimiter(options =>
 {
@@ -361,3 +365,5 @@ app.MapGet("/health/outbox", async (IServiceProvider sp) =>
 });
 
 app.Run();
+
+public partial class Program { }

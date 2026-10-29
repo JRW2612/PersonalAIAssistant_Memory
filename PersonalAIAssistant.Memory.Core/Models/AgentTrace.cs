@@ -17,6 +17,8 @@ namespace PersonalAIAssistant.Memory.Core.Models
         Concurrency,
         NotFound,
         Unauthorized,
+        InterlockViolation,
+        PhysicalSafetyViolation,
         Unknown
     }
 
@@ -38,6 +40,12 @@ namespace PersonalAIAssistant.Memory.Core.Models
         public string UserId { get; init; } = string.Empty;
         public string? TenantId { get; init; }
         public string? CorrelationId { get; init; }
+
+        /// <summary>Optional safety trajectory episode linkage.</summary>
+        public Guid? EpisodeId { get; init; }
+
+        /// <summary>Turn index within the safety trajectory episode.</summary>
+        public int? TurnIndex { get; init; }
 
         /// <summary>MediatR request type name (e.g. AddMemoryCommand, RetrieveMemoriesQuery).</summary>
         public string RequestName { get; init; } = string.Empty;
