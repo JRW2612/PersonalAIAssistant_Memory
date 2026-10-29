@@ -203,6 +203,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.AddSingleton<IEncryptionService, PersonalAIAssistant.Memory.Infrastructure.Security.HsmEnvelopeEncryptionService>();
 
             services.AddScoped<IEnterpriseIdentityProviderService, PersonalAIAssistant.Memory.Infrastructure.Security.EnterpriseIdentityProviderService>();
+            services.AddSingleton<IUiCapabilitiesService, PersonalAIAssistant.Memory.Infrastructure.Security.UiCapabilitiesService>();
 
             // ── Conversation Buffer & Session Context Builder ────────────────
             var redisConn = configuration.GetConnectionString("Redis");

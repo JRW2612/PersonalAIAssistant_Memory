@@ -16,7 +16,7 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Provider Connections — Personal AI Assistant</title>
+                <title>Provider Connections & Security — Personal AI Assistant</title>
                 <style>
                     :root {
                         --bg: #0b0f19;
@@ -33,6 +33,14 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
                     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif; }
                     body { background: var(--bg); color: var(--text); padding: 2rem 1.5rem; min-height: 100vh; }
                     .container { max-width: 1100px; margin: 0 auto; }
+                    
+                    /* Navigation Bar */
+                    nav.navbar { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); padding-bottom: 1rem; margin-bottom: 2rem; }
+                    .nav-links { display: flex; gap: 1rem; }
+                    .nav-link { color: var(--text-muted); text-decoration: none; font-size: 0.9rem; font-weight: 500; padding: 0.4rem 0.8rem; border-radius: 6px; transition: all 0.2s; }
+                    .nav-link:hover, .nav-link.active { color: var(--text); background: rgba(255,255,255,0.06); }
+                    .nav-badge-admin { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); font-size: 0.7rem; padding: 0.15rem 0.4rem; border-radius: 4px; margin-left: 0.4rem; text-transform: uppercase; }
+
                     header { margin-bottom: 2rem; border-bottom: 1px solid var(--border); padding-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
                     h1 { font-size: 1.875rem; font-weight: 700; background: linear-gradient(to right, #60a5fa, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
                     p.subtitle { color: var(--text-muted); font-size: 0.95rem; margin-top: 0.25rem; }
@@ -57,12 +65,6 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
                     .meta-field { font-size: 0.825rem; margin-bottom: 0.5rem; color: #d1d5db; display: flex; justify-content: space-between; }
                     .meta-label { color: var(--text-muted); }
                     
-                    /* Scopes checklist */
-                    .scopes-container { margin: 1rem 0; background: rgba(0, 0, 0, 0.25); border-radius: 8px; padding: 0.75rem; }
-                    .scopes-title { font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; }
-                    .scope-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.825rem; margin-bottom: 0.35rem; color: #e5e7eb; }
-                    .scope-item input { accent-color: var(--primary); }
-
                     /* Buttons */
                     .btn-group { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1.25rem; }
                     .btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.6rem 1rem; border-radius: 6px; font-weight: 500; font-size: 0.875rem; cursor: pointer; border: none; transition: all 0.2s; text-decoration: none; text-align: center; }
@@ -73,8 +75,15 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
                     .btn-danger { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
                     .btn-danger:hover { background: rgba(239, 68, 68, 0.25); }
 
+                    /* Security Boundary Demonstration Panel */
+                    .security-demo-box { background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(96, 165, 250, 0.3); border-radius: 12px; padding: 1.5rem; margin-top: 3rem; margin-bottom: 2rem; }
+                    .security-demo-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+                    .security-demo-title { font-size: 1.15rem; font-weight: 600; color: #93c5fd; }
+                    .security-demo-desc { font-size: 0.875rem; color: #cbd5e1; margin-bottom: 1.25rem; line-height: 1.5; }
+                    .tamper-actions { display: flex; gap: 1rem; flex-wrap: wrap; }
+
                     /* Audit Log */
-                    .audit-section { margin-top: 3rem; }
+                    .audit-section { margin-top: 2rem; }
                     .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
                     .section-title { font-size: 1.25rem; font-weight: 600; }
                     table { width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 8px; overflow: hidden; border: 1px solid var(--border); font-size: 0.875rem; }
@@ -82,7 +91,7 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
                     th { background: rgba(0, 0, 0, 0.35); font-weight: 600; color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; }
                     tr:hover { background: rgba(255, 255, 255, 0.02); }
 
-                    /* Direct Key Modal */
+                    /* Modal */
                     .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); align-items: center; justify-content: center; z-index: 100; }
                     .modal.show { display: flex; }
                     .modal-content { background: #161e2e; border: 1px solid var(--border); border-radius: 12px; width: 90%; max-width: 480px; padding: 1.5rem; }
@@ -91,28 +100,57 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
                     .form-group { margin-bottom: 1rem; }
                     .form-label { display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.35rem; }
                     .form-control { width: 100%; background: #0b0f19; border: 1px solid var(--border); border-radius: 6px; padding: 0.6rem 0.75rem; color: var(--text); font-size: 0.9rem; }
-                    .form-control:focus { outline: none; border-color: var(--primary); }
                 </style>
             </head>
             <body>
                 <div class="container">
+                    <!-- Dynamic Role-Based Navigation -->
+                    <nav class="navbar">
+                        <div class="nav-links" id="dynamicNav">
+                            <a href="/memories" class="nav-link">Memories</a>
+                            <a href="/connections" class="nav-link active">AI Connections</a>
+                        </div>
+                        <div class="user-badge" id="userBadge">Resolving Session...</div>
+                    </nav>
+
                     <header>
                         <div>
-                            <h1>Connect My Personal AI Account</h1>
-                            <p class="subtitle">Bring Your Own Key (BYOK) & OAuth 2.0 with AES-256-GCM encrypted token storage.</p>
+                            <h1>AI Provider Connections & Security</h1>
+                            <p class="subtitle">Role-based UI visibility with authoritative backend security enforcement.</p>
                         </div>
-                        <div class="user-badge" id="userBadge">User: user-alice</div>
                     </header>
 
                     <div id="alertBox" class="alert"></div>
 
+                    <!-- AI Connections Grid -->
                     <div class="grid" id="providersGrid">
                         <!-- Provider cards dynamically rendered here -->
                     </div>
 
-                    <div class="audit-section">
+                    <!-- Interactive Anti-Tamper & Security Boundary Demonstration -->
+                    <div class="security-demo-box">
+                        <div class="security-demo-header">
+                            <span class="security-demo-title">🛡️ Backend Security Boundary & Anti-Tamper Verification</span>
+                            <span class="badge badge-active">Backend Authoritative</span>
+                        </div>
+                        <p class="security-demo-desc">
+                            <strong>Principle:</strong> Frontend UI checks adapt visibility for user experience, but <em>never</em> act as a security boundary.
+                            Even if an attacker alters client JavaScript or DevTools to unhide administrative buttons, the backend independently verifies tenant boundaries and roles, rejecting unauthorized calls with <strong>403 Forbidden</strong>.
+                        </p>
+                        <div class="tamper-actions">
+                            <button class="btn btn-danger" onclick="simulateTamperAttempt('hsm.rotate', null, null)">
+                                ⚠️ Simulate DOM Tamper (Invoke HSM Key Rotation)
+                            </button>
+                            <button class="btn btn-danger" onclick="simulateTamperAttempt('memory.read', 'mem-cross-tenant-123', 'tenant-foreign')">
+                                ⚠️ Simulate Cross-Tenant BOLA / IDOR Tamper
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Audit Log Section (Role-Protected Visibility) -->
+                    <div class="audit-section" id="auditSection" style="display: none;">
                         <div class="section-header">
-                            <h2 class="section-title">Provider Audit Trail (Tamper-Evident Hash Chain)</h2>
+                            <h2 class="section-title">Tamper-Evident Audit Trail (Restricted Visibility)</h2>
                             <button class="btn btn-secondary" onclick="loadAuditLogs()">Refresh Logs</button>
                         </div>
                         <table>
@@ -154,23 +192,49 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
                 </div>
 
                 <script>
-                    const params = new URLSearchParams(window.location.search);
+                    let uiCapabilities = {
+                        userId: 'user-alice',
+                        tenantId: 'default',
+                        canManageConnections: true,
+                        canRevokeConnections: false,
+                        canViewAuditLogs: false,
+                        visibleNavigation: []
+                    };
                     let currentProviderForModal = '';
 
-                    window.onload = function() {
-                        const status = params.get('status');
-                        const provider = params.get('provider');
-                        const message = params.get('message');
-
-                        if (status === 'connected') {
-                            showAlert(`Successfully connected ${provider.toUpperCase()} account via OAuth 2.0! Encrypted tokens saved.`, 'success');
-                        } else if (status === 'error') {
-                            showAlert(`Connection error: ${message || 'Failed to authenticate.'}`, 'danger');
-                        }
-
+                    window.onload = async function() {
+                        await loadUiCapabilities();
                         loadConnections();
-                        loadAuditLogs();
                     };
+
+                    async function loadUiCapabilities() {
+                        try {
+                            const res = await fetch('/api/v1/ui/capabilities');
+                            if (res.ok) {
+                                uiCapabilities = await res.json();
+                                document.getElementById('userBadge').innerText = 
+                                    `User: ${uiCapabilities.userId} | Tenant: ${uiCapabilities.tenantId} | Roles: ${uiCapabilities.roles.join(', ') || 'Employee'}`;
+
+                                // Render dynamic navigation
+                                if (uiCapabilities.visibleNavigation && uiCapabilities.visibleNavigation.length > 0) {
+                                    const navContainer = document.getElementById('dynamicNav');
+                                    navContainer.innerHTML = uiCapabilities.visibleNavigation.map(item => {
+                                        const adminBadge = item.isAdminOnly ? '<span class="nav-badge-admin">Admin</span>' : '';
+                                        const active = item.id === 'connections' ? 'active' : '';
+                                        return `<a href="${item.path}" class="nav-link ${active}">${item.label}${adminBadge}</a>`;
+                                    }).join('');
+                                }
+
+                                // Conditionally display audit logs section based on authoritative backend permission
+                                if (uiCapabilities.canViewAuditLogs) {
+                                    document.getElementById('auditSection').style.display = 'block';
+                                    loadAuditLogs();
+                                }
+                            }
+                        } catch (err) {
+                            console.warn('Could not load authoritative UI capabilities:', err);
+                        }
+                    }
 
                     function showAlert(msg, type) {
                         const box = document.getElementById('alertBox');
@@ -181,109 +245,72 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
                     }
 
                     async function loadConnections() {
+                        const grid = document.getElementById('providersGrid');
                         try {
                             const res = await fetch('/api/v1/connections');
-                            const providers = await res.json();
-                            const grid = document.getElementById('providersGrid');
-                            grid.innerHTML = '';
-
-                            providers.forEach(p => {
-                                const card = document.createElement('div');
-                                card.className = 'card';
-
-                                const isActive = p.isActive;
-                                const badgeClass = isActive ? 'badge-active' : (p.status === 'Revoked' ? 'badge-revoked' : 'badge-notconnected');
-                                const statusLabel = isActive ? 'Connected' : (p.status === 'Revoked' ? 'Revoked' : 'Not Connected');
-
-                                const providerDescriptions = {
-                                    'gemini': 'Google Gemini 1.5 Flash / Pro. Used for memory compression, semantic consolidation, and chat synthesis.',
-                                    'openai': 'OpenAI GPT-4o and Text-Embedding-3. Used for vector embedding generation and chat.',
-                                    'anthropic': 'Anthropic Claude 3.5 Sonnet. Advanced reasoning and contextual recall.'
-                                };
-
-                                card.innerHTML = `
-                                    <div>
-                                        <div class="card-header">
-                                            <div class="provider-title">
-                                                <span>${p.provider.toUpperCase()}</span>
-                                            </div>
-                                            <span class="badge ${badgeClass}">${statusLabel}</span>
-                                        </div>
-                                        <p class="provider-desc">${providerDescriptions[p.provider.toLowerCase()] || 'AI Provider connection.'}</p>
-                                        
-                                        ${isActive ? `
-                                            <div class="meta-field">
-                                                <span class="meta-label">Credential Kind:</span>
-                                                <span>${p.credentialKind}</span>
-                                            </div>
-                                            <div class="meta-field">
-                                                <span class="meta-label">Account:</span>
-                                                <span>${p.accountEmail || p.accountName || 'Active Session'}</span>
-                                            </div>
-                                            <div class="meta-field">
-                                                <span class="meta-label">Storage:</span>
-                                                <span style="color: #34d399;">AES-256-GCM Encrypted</span>
-                                            </div>
-                                            <div class="meta-field">
-                                                <span class="meta-label">Scopes:</span>
-                                                <span>${(p.consentScopes && p.consentScopes.length) ? p.consentScopes.join(', ') : 'ai.generate'}</span>
-                                            </div>
-                                        ` : `
-                                            <div class="scopes-container">
-                                                <div class="scopes-title">Consent Scopes:</div>
-                                                <label class="scope-item"><input type="checkbox" id="${p.provider}-s1" checked disabled /> ai.generate (Model Inference)</label>
-                                                <label class="scope-item"><input type="checkbox" id="${p.provider}-s2" checked /> ai.memory.read (Context Injection)</label>
-                                                <label class="scope-item"><input type="checkbox" id="${p.provider}-s3" checked /> ai.memory.write (Consolidation Save)</label>
-                                            </div>
-                                        `}
-                                    </div>
-
-                                    <div class="btn-group">
-                                        ${isActive ? `
-                                            <button class="btn btn-primary" onclick="testConnection('${p.provider}')">Test Connectivity</button>
-                                            <button class="btn btn-danger" onclick="revokeConnection('${p.provider}')">Disconnect / Revoke</button>
-                                        ` : `
-                                            ${p.provider.toLowerCase() === 'gemini' ? `
-                                                <a class="btn btn-primary" href="/api/v1/connections/gemini/authorize?redirect=true">
-                                                    Connect with Google OAuth 2.0
-                                                </a>
-                                            ` : ''}
-                                            <button class="btn btn-secondary" onclick="openByokModal('${p.provider}')">
-                                                Connect with API Key (BYOK)
-                                            </button>
-                                        `}
-                                    </div>
-                                `;
-                                grid.appendChild(card);
-                            });
+                            if (!res.ok) {
+                                grid.innerHTML = '<p style="color:var(--text-muted)">Failed to load connections.</p>';
+                                return;
+                            }
+                            const data = await res.json();
+                            grid.innerHTML = data.map(p => renderProviderCard(p)).join('');
                         } catch (err) {
-                            console.error('Failed to load connections:', err);
+                            grid.innerHTML = `<p style="color:var(--danger)">Error: ${err.message}</p>`;
                         }
                     }
 
-                    async function loadAuditLogs() {
-                        try {
-                            const res = await fetch('/api/v1/connections/audit-logs?limit=15');
-                            const logs = await res.json();
-                            const tbody = document.getElementById('auditTableBody');
-                            tbody.innerHTML = '';
+                    function renderProviderCard(p) {
+                        const badgeClass = p.status === 'Active' ? 'badge-active' : (p.status === 'Revoked' ? 'badge-revoked' : 'badge-notconnected');
+                        
+                        // Role-based button visibility
+                        const disconnectBtn = (p.status === 'Active' && uiCapabilities.canRevokeConnections)
+                            ? `<button class="btn btn-danger" onclick="revokeConnection('${p.provider}')">Disconnect & Purge Key</button>`
+                            : '';
 
-                            if (!logs || logs.length === 0) {
-                                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--text-muted);">No connection audit records yet.</td></tr>';
+                        const connectBtn = uiCapabilities.canManageConnections
+                            ? `<button class="btn btn-primary" onclick="openByokModal('${p.provider}')">Connect API Key (BYOK)</button>`
+                            : `<span style="font-size:0.8rem; color:var(--text-muted); text-align:center;">Connection management restricted to Admin</span>`;
+
+                        return `
+                        <div class="card">
+                            <div>
+                                <div class="card-header">
+                                    <div class="provider-title">${p.provider.toUpperCase()}</div>
+                                    <span class="badge ${badgeClass}">${p.status}</span>
+                                </div>
+                                <div class="provider-desc">${p.description}</div>
+                                <div class="meta-field">
+                                    <span class="meta-label">Encrypted DEK Format</span>
+                                    <span>${p.encryptedKeyFormat || 'FIPS 140-2 Level 3 (0x03)'}</span>
+                                </div>
+                            </div>
+                            <div class="btn-group">
+                                ${p.status === 'Active' ? `<button class="btn btn-secondary" onclick="testConnection('${p.provider}')">Test Connectivity</button>` : ''}
+                                ${disconnectBtn}
+                                ${p.status !== 'Active' ? connectBtn : ''}
+                            </div>
+                        </div>`;
+                    }
+
+                    async function loadAuditLogs() {
+                        if (!uiCapabilities.canViewAuditLogs) return;
+                        const tbody = document.getElementById('auditTableBody');
+                        try {
+                            const res = await fetch('/api/v1/connections/audit-logs');
+                            if (!res.ok) return;
+                            const logs = await res.json();
+                            if (logs.length === 0) {
+                                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--text-muted);">No audit records found.</td></tr>';
                                 return;
                             }
-
-                            logs.forEach(l => {
-                                const row = document.createElement('tr');
-                                const eventColor = l.eventType === 'CONNECTED' ? '#34d399' : (l.eventType === 'REVOKED' ? '#f87171' : '#60a5fa');
-                                row.innerHTML = `
-                                    <td style="white-space: nowrap; color: var(--text-muted);">${new Date(l.timestampUtc).toLocaleString()}</td>
+                            tbody.innerHTML = logs.map(l => `
+                                <tr>
+                                    <td>${new Date(l.timestampUtc).toLocaleString()}</td>
                                     <td><strong>${l.provider.toUpperCase()}</strong></td>
-                                    <td><span style="color: ${eventColor}; font-weight: 600;">${l.eventType}</span></td>
+                                    <td>${l.eventType}</td>
                                     <td>${l.details}</td>
-                                `;
-                                tbody.appendChild(row);
-                            });
+                                </tr>
+                            `).join('');
                         } catch (err) {
                             console.error('Failed to load audit logs:', err);
                         }
@@ -304,11 +331,7 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
                     async function submitDirectConnect() {
                         const key = document.getElementById('modalKeyInput').value.trim();
                         const account = document.getElementById('modalAccountInput').value.trim();
-
-                        if (!key) {
-                            alert('Please provide an API key or token.');
-                            return;
-                        }
+                        if (!key) return alert('Please provide an API key.');
 
                         try {
                             const res = await fetch(`/api/v1/connections/${currentProviderForModal}/connect`, {
@@ -323,12 +346,11 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
 
                             if (res.ok) {
                                 closeModal();
-                                showAlert(`Successfully connected ${currentProviderForModal.toUpperCase()}! Credentials encrypted and stored.`, 'success');
+                                showAlert(`Successfully connected ${currentProviderForModal.toUpperCase()}! Credentials encrypted.`, 'success');
                                 loadConnections();
-                                loadAuditLogs();
                             } else {
                                 const err = await res.text();
-                                alert('Error connecting: ' + err);
+                                alert('Error: ' + err);
                             }
                         } catch (err) {
                             alert('Failed to connect: ' + err.message);
@@ -336,26 +358,22 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
                     }
 
                     async function revokeConnection(provider) {
-                        if (!confirm(`Are you sure you want to disconnect and revoke your ${provider.toUpperCase()} connection? Stored credentials will be purged.`)) {
-                            return;
-                        }
-
+                        if (!confirm(`Are you sure you want to disconnect ${provider.toUpperCase()}?`)) return;
                         try {
                             const res = await fetch(`/api/v1/connections/${provider}/revoke`, {
                                 method: 'DELETE',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ reason: 'User clicked disconnect on Provider Connections dashboard' })
+                                body: JSON.stringify({ reason: 'User clicked disconnect' })
                             });
 
                             if (res.ok) {
-                                showAlert(`Connection for ${provider.toUpperCase()} has been revoked and credentials purged.`, 'success');
+                                showAlert(`Connection for ${provider.toUpperCase()} has been revoked.`, 'success');
                                 loadConnections();
-                                loadAuditLogs();
                             } else {
-                                alert('Failed to revoke connection.');
+                                alert('Backend rejected revocation: Forbidden.');
                             }
                         } catch (err) {
-                            alert('Error revoking connection: ' + err.message);
+                            alert('Error: ' + err.message);
                         }
                     }
 
@@ -364,14 +382,36 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
                         try {
                             const res = await fetch(`/api/v1/connections/${provider}/test`, { method: 'POST' });
                             const data = await res.json();
-                            if (data.success) {
-                                showAlert(`Connectivity OK (${data.responseTimeMs}ms): ${data.message}`, 'success');
-                            } else {
-                                showAlert(`Connectivity Failed (${data.responseTimeMs}ms): ${data.message}`, 'danger');
-                            }
-                            loadAuditLogs();
+                            showAlert(data.success ? `Connectivity OK: ${data.message}` : `Failed: ${data.message}`, data.success ? 'success' : 'danger');
                         } catch (err) {
                             showAlert(`Connectivity Error: ${err.message}`, 'danger');
+                        }
+                    }
+
+                    // Security Anti-Tamper Simulation
+                    async function simulateTamperAttempt(action, resourceId, targetTenantId) {
+                        showAlert(`[ATTACK SIMULATION] Attempting unauthorized backend action '${action}'...`, 'danger');
+                        try {
+                            const res = await fetch('/api/v1/ui/simulate-tamper', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    targetAction: action,
+                                    targetResourceId: resourceId,
+                                    targetTenantId: targetTenantId
+                                })
+                            });
+
+                            const data = await res.json();
+                            if (res.status === 403) {
+                                showAlert(`🛡️ [BACKEND BLOCKED 403 FORBIDDEN] ${data.error} (Reason: ${data.reason || 'Cross-tenant violation'}) - Violation logged to security audit trail!`, 'danger');
+                            } else if (res.ok) {
+                                showAlert(`Action executed: ${data.message}`, 'success');
+                            } else {
+                                showAlert(`Response (${res.status}): ${JSON.stringify(data)}`, 'danger');
+                            }
+                        } catch (err) {
+                            showAlert(`Request Failed: ${err.message}`, 'danger');
                         }
                     }
                 </script>
