@@ -1,0 +1,32 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: memory-api-canary-ingress
+  namespace: bfsi-memory-prod
+  annotations:
+    # NGINX Ingress Canary routing: 10% of total production traffic routes to canary deployment
+    nginx.ingress.kubernetes.io/canary: "true"
+    nginx.ingress.kubernetes.io/canary-weight: "10"
+    
+    # Header-based opt-in for internal QA & automated synthetic canary testing
+    nginx.ingress.kubernetes.io/canary-by-header: "X-Canary"
+    nginx.ingress.kubernetes.io/canary-by-header-value: "always"
+    
+    # Cookie-based canary stickiness to avoid flip-flopping across requests in a session
+    nginx.ingress.kubernetes.io/canary-by-cookie: "canary_session"
+
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: api.bfsi-memory.bank.internal
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: memory-api-canary-service
+                port:
+                  number: 80

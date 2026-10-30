@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memory-api-canary
+  namespace: bfsi-memory-prod
+  labels:
+    app: memory-api
+    tier: backend
+    track: canary
+    version: v1.1.0-canary
+spec:
+  # Canary operates with 1 or 2 pods alongside the primary 5 stable pods
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: memory-api
+      tier: backend
+      track: canary
+  template:
+    metadata:
+      labels:
+        app: memory-api
+        tier: backend
+        track: canary
+        version: v1.1.0-canary
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: memory-api-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: memory-api
+          image: ghcr.io/jr-w/personal-ai-assistant-memory-api:v1.1.0-canary
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+              add: [NET_BIND_SERVICE]
+          ports:
+            - name: http
+              containerPort: 80
+            - name: http-alt
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: bfsi-memory-config
+            - secretRef:
+                name: bfsi-memory-secrets
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2048Mi"
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: memory-api-canary-service
+  namespace: bfsi-memory-prod
+  labels:
+    app: memory-api
+    tier: backend
+    track: canary
+spec:
+  type: ClusterIP
+  selector:
+    app: memory-api
+    tier: backend
+    track: canary
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP

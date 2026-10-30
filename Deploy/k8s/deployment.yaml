@@ -103,6 +103,8 @@ spec:
             - secretRef:
                 name: bfsi-memory-secrets
 
+          # Resource allocations: requests guarantee scheduling capacity; limits prevent runaway memory leaks
+          # Sized to avoid node resource exhaustion during maxSurge rollout
           resources:
             requests:
               cpu: "500m"
@@ -111,6 +113,7 @@ spec:
               cpu: "2000m"
               memory: "2048Mi"
 
+          # Startup probe: gives the container up to 60s (30 * 2s) to complete JIT compilation and database migrations
           startupProbe:
             httpGet:
               path: /health
@@ -118,15 +121,17 @@ spec:
             failureThreshold: 30
             periodSeconds: 2
 
+          # Liveness probe: automatically restarts deadlocked, unresponsive, or crashed containers
           livenessProbe:
             httpGet:
               path: /health/live
               port: 80
-            initialDelaySeconds: 5
+            initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3
 
+          # Readiness probe: removes pod from service endpoint traffic when unhealthy, preventing failed requests during rollout
           readinessProbe:
             httpGet:
               path: /health

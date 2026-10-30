@@ -1,0 +1,17 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: memory-api-pdb
+  namespace: bfsi-memory-prod
+  labels:
+    app: memory-api
+    tier: backend
+    version: v1.0.0
+spec:
+  # Maintain high-availability during voluntary disruptions (node maintenance, cluster upgrades, drains)
+  # Guarantees that at least 3 pods out of 5 remain available at all times.
+  minAvailable: 3
+  selector:
+    matchLabels:
+      app: memory-api
+      tier: backend

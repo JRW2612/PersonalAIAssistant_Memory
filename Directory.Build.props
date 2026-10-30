@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- Seamless roll-forward across major .NET runtimes (e.g. net8.0 app running on net10/net11 host) without requiring env vars -->
+    <RollForward>LatestMajor</RollForward>
+  </PropertyGroup>
+</Project>

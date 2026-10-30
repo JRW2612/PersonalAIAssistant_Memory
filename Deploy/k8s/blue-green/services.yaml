@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: memory-api-service
+  namespace: bfsi-memory-prod
+  labels:
+    app: memory-api
+    tier: backend
+spec:
+  type: ClusterIP
+  selector:
+    app: memory-api
+    tier: backend
+    # Points to active environment ('blue' or 'green')
+    version: blue
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+    - name: http-alt
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+    - name: https
+      port: 443
+      targetPort: 8081
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: memory-api-preview-service
+  namespace: bfsi-memory-prod
+  labels:
+    app: memory-api
+    tier: backend
+spec:
+  type: ClusterIP
+  selector:
+    app: memory-api
+    tier: backend
+    # Internal preview service pointing to inactive environment for smoke testing before cutover
+    version: green
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
