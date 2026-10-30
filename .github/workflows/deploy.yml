@@ -1,0 +1,59 @@
+name: Deploy to Production (Strategy Choice)
+
+on:
+  workflow_dispatch:
+    inputs:
+      deployment_strategy:
+        description: 'Select Deployment Strategy'
+        required: true
+        type: choice
+        default: 'Canary'
+        options:
+          - 'Canary'
+          - 'BlueGreen'
+          - 'RollingUpdate'
+      image_tag:
+        description: 'Container Image Tag (e.g. v1.0.0-bfsi-certified)'
+        required: true
+        default: 'v1.0.0-bfsi-certified'
+      blue_green_target:
+        description: 'Target Environment (Only for Blue-Green)'
+        required: false
+        type: choice
+        default: 'green'
+        options:
+          - 'green'
+          - 'blue'
+      dry_run:
+        description: 'Perform dry-run validation without applying changes'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  deploy:
+    name: Deploy to BFSI Sovereign Cluster (${{ inputs.deployment_strategy }})
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.30.0'
+
+      - name: Configure Sovereign Kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_BFSI_PROD }}" > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Execute Deployment (${{ inputs.deployment_strategy }})
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          BLUE_GREEN_TARGET: ${{ inputs.blue_green_target }}
+        run: |
+          chmod +x Deploy/k8s/deploy-production.sh
+          ./Deploy/k8s/deploy-production.sh "${{ inputs.deployment_strategy }}"
