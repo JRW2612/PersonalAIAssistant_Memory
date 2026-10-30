@@ -17,11 +17,22 @@ using PersonalAIAssistant.Memory.Infrastructure.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Fail-fast validation: Ensure Production environments have valid durable stores, explicit CORS, and HSM/secure secrets
+builder.Configuration.ValidateProductionConfiguration(builder.Environment);
+
 // 1. Add Observability (Serilog, OpenTelemetry, Health Checks)
 builder.AddObservability();
 
 // 2. Add API Controllers & OpenAPI/Swagger
-builder.Services.AddControllers().AddJsonOptions(options =>
+builder.Services.AddControllers(mvcOptions =>
+{
+    mvcOptions.OutputFormatters.Insert(0, new PersonalAIAssistant.Memory.Api.Extensions.StreamSystemTextJsonOutputFormatter(
+        new System.Text.Json.JsonSerializerOptions
+        {
+            UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+            PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+        }));
+}).AddJsonOptions(options =>
 {
     // Tool/API payloads are allow-list contracts: do not silently ignore unknown parameters.
     options.JsonSerializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
@@ -130,14 +141,9 @@ builder.Services.AddAuthentication(options =>
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
+        // SEC-02: Single authoritative signing key sourced exclusively from Jwt:SecretKey
+        // configuration (environment variable / Key Vault). No fallback literals permitted.
         IssuerSigningKey = new SymmetricSecurityKey(keyBytes),
-        IssuerSigningKeyResolver = (token, securityToken, kid, validationParameters) =>
-        {
-            var keys = new List<SecurityKey> { new SymmetricSecurityKey(keyBytes) };
-            var hsmSecret = "EnterpriseBfsiFipsHsmJwtSigningKey2026SecureSecretString!";
-            keys.Add(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(hsmSecret)));
-            return keys;
-        },
         ValidateIssuer = true,
         ValidIssuer = jwtIssuer,
         ValidateAudience = true,
@@ -239,20 +245,22 @@ builder.Services.AddCors(options =>
         }
         else
         {
-            // Production fallback when no origins configured: allow any origin but WITHOUT credentials
-            policy.AllowAnyOrigin()
-                  .AllowAnyMethod()
-                  .AllowAnyHeader();
+            // SEC-05: Production requires explicit, non-wildcard CORS origins.
+            // Fall-open AllowAnyOrigin is strictly prohibited. Startup validation in
+            // ProductionConfigurationValidator will already have thrown before this point
+            // if ASPNETCORE_ENVIRONMENT=Production and no origins are configured.
+            // This branch is only reachable in non-Production, non-Development environments
+            // (e.g. Staging with incomplete config) — deny all cross-origin in that case.
+            policy.SetIsOriginAllowed(_ => false);
         }
     });
 });
 
 // 4. Register Infrastructure Services (EF Core PostgreSQL/InMemory, MongoDB/InMemory, Qdrant, MassTransit/RabbitMQ)
-var useInMemory = builder.Configuration.GetValue<bool>("UseInMemoryStore", true);
-var postgresConn = builder.Configuration.GetConnectionString("PostgresReadModel")
-    ?? "Host=localhost;Database=PersonalAiMemoryReadDb;Username=postgres;Password=postgres";
-var mongoConn = builder.Configuration.GetConnectionString("MongoEventStore")
-    ?? "mongodb://localhost:27017";
+// SEC-03: Startup fail-fast enforced by ProductionConfigurationValidator. No dev-credential fallbacks here.
+var useInMemory = builder.Configuration.GetValue<bool?>("UseInMemoryStore") ?? true;
+var postgresConn = builder.Configuration.GetConnectionString("PostgresReadModel");
+var mongoConn = builder.Configuration.GetConnectionString("MongoEventStore");
 
 builder.Services.AddMemoryInfrastructureServices(
     configureDbContext: options =>

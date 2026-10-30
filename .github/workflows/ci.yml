@@ -77,6 +77,14 @@ jobs:
           name: coverage-report
           path: coverage-report
 
+      - name: Enforce minimum line coverage threshold (80%)
+        run: |
+          set -e
+          # Extract line coverage percentage from the ReportGenerator XML summary
+          COVERAGE=$(grep -oP 'Line_coverage="\K[^"]+' coverage-report/Summary.xml 2>/dev/null || echo '0')
+          echo "Line coverage: ${COVERAGE}%"
+          python3 -c "cov=float('${COVERAGE}'); exit(0) if cov >= 80.0 else (print(f'FAIL: Coverage {cov:.1f}% is below the required 80.0% minimum.') or exit(1))"
+
       - name: Upload raw coverage files
         uses: actions/upload-artifact@v4
         with:
@@ -92,12 +100,12 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: '**/coverage.cobertura.xml'
           flags: unittests
-          fail_ci_if_error: false
+          fail_ci_if_error: true
 
       - name: Pack projects (create NuGet packages)
         run: |
           set -e
-          dotnet pack "PersonalAIAssistant.Memory.sln" -c Release -o ./artifacts --no-build || true
+          dotnet pack "PersonalAIAssistant.Memory.sln" -c Release -o ./artifacts --no-build
 
       - name: Upload packages/artifacts
         uses: actions/upload-artifact@v4
@@ -113,7 +121,7 @@ jobs:
           set -e
           for pkg in artifacts/*.nupkg; do
             echo "Pushing $pkg"
-            dotnet nuget push "$pkg" -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json || true
+            dotnet nuget push "$pkg" -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json
           done
 
       - name: Publish to GitHub Packages
@@ -124,7 +132,7 @@ jobs:
           set -e
           for pkg in artifacts/*.nupkg; do
             echo "Pushing $pkg to GitHub Packages"
-            dotnet nuget push "$pkg" -k ${{ secrets.GITHUB_TOKEN }} -s https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json || true
+            dotnet nuget push "$pkg" -k ${{ secrets.GITHUB_TOKEN }} -s https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
           done
 
       - name: Install dotnet-format (for style check)

@@ -43,8 +43,11 @@ namespace PersonalAIAssistant.Memory.Tests.Security
         public async Task Hsm_Stores_And_Retrieves_Jwt_Signing_Secret()
         {
             var secret = await _hsmService.GetSecretAsync("JwtSigningSecret");
+            // SEC-02: SimulatedFipsHsmKeyVaultService no longer seeds a hardcoded literal.
+            // Assert that a non-empty, sufficiently long cryptographically-random secret is returned.
             Assert.False(string.IsNullOrWhiteSpace(secret));
-            Assert.Equal("EnterpriseBfsiFipsHsmJwtSigningKey2026SecureSecretString!", secret);
+            Assert.True(secret.Length >= 32, "JWT signing secret must be at least 32 characters long.");
+            Assert.DoesNotContain("EnterpriseBfsiFipsHsm", secret, StringComparison.OrdinalIgnoreCase);
         }
 
         [Fact]

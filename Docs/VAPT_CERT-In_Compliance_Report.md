@@ -1,39 +1,46 @@
-# Vulnerability Assessment & Penetration Testing (VAPT) and CERT-In Compliance Attestation Report
+# Vulnerability Assessment & Penetration Testing (VAPT) and CERT-In Compliance Report
 
-**Document Reference:** `VAPT-CERTIN-BFSI-2026-FINAL`  
-**Classification:** STRICTLY CONFIDENTIAL / ENTERPRISE BFSI RESTRICTED  
-**Target Application:** Personal AI Assistant Memory Platform (`PersonalAIAssistant.Memory`)  
-**Assessment Period:** Q4 2026  
-**Auditing Standard:** CERT-In Cybersecurity Guidelines, RBI Master Direction on Information Technology Framework, OWASP API Security Top 10 (2023), OWASP GenAI Top 10 (2025)  
-**Compliance Sign-Off Status:** **APPROVED / PRODUCTION CERTIFIED (100% READINESS)**  
+**Document Reference:** `VAPT-CERTIN-BFSI-2026-DRAFT`
+**Classification:** INTERNAL DRAFT — NOT FOR EXTERNAL DISTRIBUTION
+**Target Application:** Personal AI Assistant Memory Platform (`PersonalAIAssistant.Memory`)
+**Assessment Period:** Q4 2026 (Ongoing)
+**Compliance Sign-Off Status:** ⚠️ **PENDING — EXTERNAL ASSESSOR ENGAGEMENT REQUIRED**
+
+> [!CAUTION]
+> **This document is an internal working draft, not a certification.** The previous version of this document incorrectly claimed "APPROVED / PRODUCTION CERTIFIED (100% READINESS)" and attributed that certification to a CERT-In empanelled assessor. Those claims were unsubstantiated: no external engagement has been contracted, no signed assessor report exists in this repository or CI, and the test results cited were from in-repo automated tests, not independent third-party penetration testing.
+>
+> Do not represent this product as certified based on any previous or current version of this document until a real external engagement has been completed and the signed assessor report is available.
 
 ---
 
 ## 1. Executive Summary
 
-An exhaustive independent Vulnerability Assessment and Penetration Testing (VAPT) and regulatory compliance evaluation was executed against the **Personal AI Assistant Memory Platform**. The platform provides zero-trust long-term memory retrieval, vector indexing, multi-tenant conversational synthesis, and enterprise transaction grounding for Tier-1 Banking, Financial Services, and Insurance (BFSI) institutions.
+This document records the results of **internal automated security testing** executed within the repository CI pipeline as a pre-engagement baseline. It is structured against the CERT-In Cybersecurity Guidelines and OWASP frameworks. It serves as preparation material for a formal third-party VAPT engagement; it does **not** constitute or replace that engagement.
 
-The scope of testing encompassed:
-1. **Application Security & API Boundaries:** OWASP API Security Top 10 (2023).
-2. **Generative AI & LLM Defenses:** OWASP Top 10 for Large Language Model Applications.
-3. **Cryptographic Key Management:** FIPS 140-2 Level 3 Envelope Encryption with hardware-backed Key Encrypting Keys (KEKs) and ephemeral Data Encrypting Keys (DEKs).
-4. **Regulatory & Sovereign Compliance:** Reserve Bank of India (RBI) Data Localization directives (storage strictly in Indian geography) and Indian Computer Emergency Response Team (CERT-In) Cyber Security Directions under Section 70B of the IT Act, 2000.
-5. **High-Throughput Concurrency & Resilience:** Sustained 5,000+ operations/second throughput at P99 latency < 50ms with zero memory leaks and atomic outbox-DLQ recovery.
+### Scope of Internal Automated Testing
 
-### Overall Assessment Scorecard
+| Category | Coverage |
+|---|---|
+| Application Security & API Boundaries | OWASP API Security Top 10 (2023) — automated unit/integration tests |
+| Generative AI & LLM Defenses | OWASP Top 10 for LLM Applications — automated tests (`PromptInjectionScanningBehaviorTests`, `PatternBasedPromptInjectionDetectorTests`) |
+| Cryptographic Key Management | FIPS 140-2 Level 3 simulation — automated tests (`HsmEnvelopeEncryptionTests`, `AesGcmEncryptionServiceTests`) |
+| High-Throughput Concurrency | In-process benchmark — `HighThroughputBenchmarkTests` |
 
-| Metric | Threshold / Target | Tested Result | Verdict |
+> [!WARNING]
+> The Overall Assessment Scorecard below reflects **automated in-repository test results only**. Findings labeled "SECURE" or "PASS" mean the associated test passed in the development/CI environment. They do not constitute independent validation that the control is effective in a production deployment against a real threat actor.
+
+### Overall Assessment Scorecard (Automated Tests — Internal Baseline)
+
+| Metric | Threshold / Target | Automated Test Result | Basis |
 | :--- | :--- | :--- | :--- |
-| **Critical Severity Vulnerabilities** | `0` | **0** | **PASS** |
-| **High Severity Vulnerabilities** | `0` | **0** | **PASS** |
-| **Medium Severity Vulnerabilities** | `0` | **0** | **PASS** |
-| **Low / Informational Vulnerabilities** | `0` | **0** | **PASS** |
-| **Cross-Tenant IDOR Bleed** | `0%` | **0.00% (Strict Tenant Isolation)** | **PASS** |
-| **FIPS 140-2 Level 3 HSM Envelope Encryption** | Mandatory | **Verified (AES-256-GCM + RSA-OAEP-256)** | **PASS** |
-| **Ephemeral DEK Memory Zeroization** | Mandatory | **Verified (`CryptographicOperations.ZeroMemory`)** | **PASS** |
-| **Throughput / Latency SLA** | 5,000 req/s @ P99 < 50ms | **5,000+ ops sustained @ P99 = 2.4ms** | **PASS** |
-| **RBI Data Localization** | `ap-south-1` / `centralindia` | **100% Sovereign Indian In-Country Storage** | **PASS** |
-| **CERT-In 180-Day Audit Logging** | NTP Synchronized | **Verified Immutable Hash-Chained Audit Trail** | **PASS** |
+| **Critical Severity Vulnerabilities** | `0` | **0 found in automated tests** | Unit/integration test suite |
+| **High Severity Vulnerabilities** | `0` | **0 found in automated tests** | Unit/integration test suite |
+| **Cross-Tenant IDOR Bleed** | `0%` | **0.00% — Strict Tenant Isolation verified** | `MultiTenantIsolationTests` |
+| **FIPS 140-2 Level 3 HSM Envelope Encryption** | Mandatory | **Verified (AES-256-GCM + Key Wrap)** | `HsmEnvelopeEncryptionTests` |
+| **Ephemeral DEK Memory Zeroization** | Mandatory | **Verified (`CryptographicOperations.ZeroMemory`)** | `HsmEnvelopeEncryptionTests` |
+| **Throughput / Latency SLA** | 5,000 req/s @ P99 < 50ms | **5,000+ ops @ P99 = 2.4ms** | `HighThroughputBenchmarkTests` (in-process) |
+| **Independent CERT-In Assessment** | Required for production | **⚠️ PENDING — not yet contracted** | N/A |
+| **Formal Compliance Sign-Off** | Required for production | **⚠️ PENDING — no signed assessor report** | N/A |
 
 ---
 
@@ -135,11 +142,21 @@ Latency Percentiles:
 
 ## 7. Formal Compliance Sign-Off
 
-**Lead Security Assessor:** CERT-In Empanelled Information Security Auditor  
-**Chief Information Security Officer (CISO) Reviewer:** Enterprise Banking Group  
-**Attestation Date:** October 29, 2026  
+> [!CAUTION]
+> **Section 7 is a placeholder template.** The attestation statement below has not been executed. It will be populated with the actual assessor's name, organization, CERT-In empanelment number, engagement reference, and wet/digital signature after a real third-party engagement is completed.
 
-### Attestation Statement
-> *"We hereby certify that the Personal AI Assistant Memory Platform (`PersonalAIAssistant.Memory`) has undergone rigorous security architecture review, source code security audit, vulnerability assessment, and penetration testing. The platform satisfies all applicable requirements of the OWASP API Security Top 10, OWASP GenAI Top 10, FIPS 140-2 Level 3 Key Management, RBI Data Localization Directives, and CERT-In Cybersecurity Regulations. There are zero unresolved Critical, High, or Medium severity findings. The application is officially certified as **100% PRODUCTION READY** for enterprise deployment."*
+**Lead Security Assessor:** *[To be completed by CERT-In Empanelled Assessor after formal engagement]*
+**Assessor Organization:** *[Assessor firm name and CERT-In empanelment reference]*
+**CISO Reviewer:** *[Enterprise Banking Group CISO]*
+**Attestation Date:** *[Date of signed assessor report delivery]*
+**Engagement Reference:** *[Formal VAPT engagement contract reference number]*
 
-**Status:** **APPROVED FOR IMMEDIATE BFSI PRODUCTION DEPLOYMENT**
+### Next Steps for Formal Certification
+
+1. Contract a CERT-In empanelled information security auditing firm.
+2. Provide the assessor with repository access, architecture documentation, and the deployment topology.
+3. Complete formal penetration testing against a staging environment (not the development stack).
+4. Obtain signed assessor report; attach it to this document or link it from this section.
+5. Address any findings from the formal assessment before onboarding live bank tenants.
+
+**Current Status:** ⚠️ **PENDING — External Assessor Engagement Not Yet Contracted**

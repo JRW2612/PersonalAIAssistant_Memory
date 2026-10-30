@@ -28,6 +28,7 @@ public class EmployeeResourceAuthorizationTests : IClassFixture<WebApplicationFa
         _factory = factory.WithWebHostBuilder(builder =>
         {
             builder.UseSetting("UseInMemoryStore", "true");
+            builder.UseSetting("Jwt:SecretKey", JwtSecret);
         });
     }
 

@@ -8,7 +8,7 @@ metadata:
     tier: backend
 data:
   ASPNETCORE_ENVIRONMENT: "Production"
-  ASPNETCORE_URLS: "http://+:8080"
+  ASPNETCORE_URLS: "http://+:80;http://+:8080"
   
   # Sovereign Indian Cloud Regions (RBI Compliance: Circular DPSS.CO.OD.No. 2785/06.11.60/2017-18)
   SOVEREIGN_REGION_AWS: "ap-south-1"

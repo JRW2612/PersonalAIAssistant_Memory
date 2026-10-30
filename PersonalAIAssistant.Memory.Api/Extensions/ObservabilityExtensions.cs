@@ -61,6 +61,12 @@ public static class ObservabilityExtensions
 
     public static IApplicationBuilder UseObservabilityEndpoints(this IApplicationBuilder app)
     {
+        app.UseHealthChecks("/health", new HealthCheckOptions
+        {
+            Predicate = _ => true,
+            ResponseWriter = WriteHealthResponse
+        });
+
         app.UseHealthChecks("/health/live", new HealthCheckOptions
         {
             Predicate = r => r.Tags.Contains("live"),

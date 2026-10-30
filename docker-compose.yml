@@ -11,13 +11,15 @@ services:
       - ASPNETCORE_ENVIRONMENT=Production
       - UseInMemoryStore=false
       - ConnectionStrings__MongoEventStore=mongodb://mongo:27017
-      - ConnectionStrings__PostgresReadModel=Host=postgres;Database=PersonalAiMemoryReadDb;Username=postgres;Password=postgres
+      - ConnectionStrings__PostgresReadModel=Host=postgres;Database=PersonalAiMemoryReadDb;Username=memory_app;Password=${POSTGRES_APP_PASSWORD:?set_POSTGRES_APP_PASSWORD}
       - Qdrant__Host=qdrant
       - Qdrant__Port=6334
       - Qdrant__Https=false
       - MessageBroker__Host=rabbitmq
-      - MessageBroker__Username=guest
-      - MessageBroker__Password=guest
+      - MessageBroker__Username=memory_app
+      - MessageBroker__Password=${RABBITMQ_APP_PASSWORD:?set_RABBITMQ_APP_PASSWORD}
+      - Jwt__SecretKey=${JWT_SECRET_KEY:?set_JWT_SECRET_KEY}
+      - Encryption__SystemKey=${ENCRYPTION_SYSTEM_KEY:?set_ENCRYPTION_SYSTEM_KEY}
       - AiGateway__Enabled=true
       - AiGateway__BaseUrl=http://ai-gateway:8080/v1/
       - AiGateway__InternalAuthToken=${AI_GATEWAY_INTERNAL_TOKEN:?set_AI_GATEWAY_INTERNAL_TOKEN}
@@ -73,8 +75,10 @@ services:
 
   mongo:
     image: mongo:7.0
+    # SEC-04: Bind to loopback only. Internal services reach Mongo via the 'backend' bridge network;
+    # the port is exposed on localhost solely for developer tooling (e.g. MongoDB Compass).
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
     volumes:
       - mongo_data:/data/db
     networks:
@@ -83,11 +87,12 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=memory_app
+      - POSTGRES_PASSWORD=${POSTGRES_APP_PASSWORD:?set_POSTGRES_APP_PASSWORD}
       - POSTGRES_DB=PersonalAiMemoryReadDb
+    # SEC-04: Bind to loopback only — the database must not be reachable from outside the host.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -95,9 +100,9 @@ services:
 
   qdrant:
     image: qdrant/qdrant:v1.9.0
+    # SEC-04: REST port (6333) unexposed; gRPC port (6334) bound to loopback for dev tooling only.
     ports:
-      - "6333:6333"
-      - "6334:6334"
+      - "127.0.0.1:6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
     networks:
@@ -105,9 +110,13 @@ services:
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
+    environment:
+      - RABBITMQ_DEFAULT_USER=memory_app
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_APP_PASSWORD:?set_RABBITMQ_APP_PASSWORD}
+    # SEC-04: Bind to loopback only. AMQP (5672) for dev tooling; management UI (15672) for local dashboards.
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
     networks:
       - backend
 

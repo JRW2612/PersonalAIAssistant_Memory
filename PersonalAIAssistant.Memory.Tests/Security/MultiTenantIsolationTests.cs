@@ -39,6 +39,7 @@ public class MultiTenantIsolationTests : IClassFixture<WebApplicationFactory<Pro
         _factory = factory.WithWebHostBuilder(builder =>
         {
             builder.UseSetting("UseInMemoryStore", "true");
+            builder.UseSetting("Jwt:SecretKey", JwtSecret);
         });
     }
 

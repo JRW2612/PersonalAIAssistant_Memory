@@ -34,8 +34,12 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Security
             _options = options.Value ?? new HsmOptions();
             _logger = logger;
 
-            // Seed default secrets
-            _secrets[_options.JwtSecretKeyName] = "EnterpriseBfsiFipsHsmJwtSigningKey2026SecureSecretString!";
+            // SEC-02: Simulated HSM seeds all secrets with cryptographically random values on
+            // each startup. No hardcoded literals. In production, this service is replaced by
+            // AzureKeyVaultManagedHsmService or AwsKmsHsmService which read secrets from the
+            // external vault at runtime. Development callers that need a deterministic signing
+            // key must configure Jwt:SecretKey via environment variable or user-secrets.
+            _secrets[_options.JwtSecretKeyName] = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));
             _secrets["DefaultMemoryMasterKey"] = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
         }
 
