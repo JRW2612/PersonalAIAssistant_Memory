@@ -966,6 +966,26 @@ class MockEmbeddingService : IEmbeddingService
             Provider: "mock",
             Model: "mock-model"));
     }
+
+    public Task<EmbeddingResult> GenerateVisualEmbeddingAsync(PersonalAIAssistant.Memory.Core.Models.VisualContent visualContent, CancellationToken ct)
+    {
+        LastQuery = visualContent.Caption ?? visualContent.Modality.ToString();
+        return Task.FromResult(new EmbeddingResult(
+            EmbeddingId: Guid.NewGuid().ToString(),
+            Vector: new float[1536],
+            Provider: "mock-visual",
+            Model: "mock-clip"));
+    }
+
+    public Task<EmbeddingResult> GenerateMultimodalEmbeddingAsync(PersonalAIAssistant.Memory.Core.Models.MultimodalEmbeddingRequest request, CancellationToken ct)
+    {
+        LastQuery = request.Text ?? request.Visual?.Caption ?? "multimodal";
+        return Task.FromResult(new EmbeddingResult(
+            EmbeddingId: Guid.NewGuid().ToString(),
+            Vector: new float[1536],
+            Provider: "mock-multimodal",
+            Model: "mock-fusion"));
+    }
 }
 
 class InMemoryVectorRepo : IVectorMemoryRepository

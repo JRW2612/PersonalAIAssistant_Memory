@@ -6,6 +6,7 @@ using PersonalAIAssistant.Memory.Api.DTOs;
 using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Business.Queries;
 using PersonalAIAssistant.Memory.Core.Domains.Enums;
+using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Models;
 
 namespace PersonalAIAssistant.Memory.Api.Controllers;
@@ -16,10 +17,17 @@ namespace PersonalAIAssistant.Memory.Api.Controllers;
 public class MemoriesController : ControllerBase
 {
     private readonly IMediator _mediator;
+    private readonly IEmbeddingService? _embeddingService;
+    private readonly IVectorMemoryRepository? _vectorRepo;
 
-    public MemoriesController(IMediator mediator)
+    public MemoriesController(
+        IMediator mediator,
+        IEmbeddingService? embeddingService = null,
+        IVectorMemoryRepository? vectorRepo = null)
     {
         _mediator = mediator;
+        _embeddingService = embeddingService;
+        _vectorRepo = vectorRepo;
     }
 
     private string GetCurrentUserId()
@@ -69,6 +77,72 @@ public class MemoriesController : ControllerBase
     }
 
     /// <summary>
+    /// Ingests a visual memory (camera snapshot, whiteboard drawing, diagram), generating visual vector embeddings
+    /// and indexing into the vector store.
+    /// </summary>
+    [HttpPost("visual")]
+    [EnableRateLimiting("MemoryWritePolicy")]
+    [ProducesResponseType(typeof(CreateMemoryResponseDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> AddVisualMemory([FromBody] CreateVisualMemoryDto dto, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(dto.ImageBase64))
+        {
+            return BadRequest("ImageBase64 payload must not be empty.");
+        }
+
+        var userId = GetCurrentUserId();
+        var visualContent = VisualContent.FromBase64(
+            dto.ImageBase64,
+            dto.MimeType,
+            dto.Description,
+            dto.Modality);
+
+        var description = string.IsNullOrWhiteSpace(dto.Description)
+            ? $"[{dto.Modality}] Visual observation captured at {DateTime.UtcNow:u}"
+            : $"[{dto.Modality}] {dto.Description}";
+
+        var tags = dto.Tags ?? new List<string>();
+        var modalityTag = dto.Modality.ToString().ToLowerInvariant();
+        if (!tags.Contains(modalityTag))
+        {
+            tags.Add(modalityTag);
+        }
+        if (!tags.Contains("visual-memory"))
+        {
+            tags.Add("visual-memory");
+        }
+
+        var command = new AddMemoryCommand(
+            RawText: description,
+            Source: string.IsNullOrWhiteSpace(dto.Source) ? "VisualCapture" : dto.Source,
+            Importance: dto.Importance,
+            Tags: tags,
+            UserId: userId,
+            CorrelationId: dto.CorrelationId
+        );
+
+        var memoryId = await _mediator.Send(command, ct);
+
+        // If visual embedding service & vector repository are injected, directly index the visual vector
+        if (_embeddingService != null && _vectorRepo != null)
+        {
+            try
+            {
+                var embedding = await _embeddingService.GenerateVisualEmbeddingAsync(visualContent, ct);
+                await _vectorRepo.UpsertAsync(memoryId, embedding.EmbeddingId, embedding.Vector, userId, ct);
+                await _mediator.Send(new MemoryIndexedCommand(memoryId, embedding.EmbeddingId, embedding.Provider), ct);
+            }
+            catch
+            {
+                // Background worker fallback handles textual indexing
+            }
+        }
+
+        return CreatedAtAction(nameof(GetMemoryById), new { id = memoryId }, new CreateMemoryResponseDto(memoryId));
+    }
+
+    /// <summary>
     /// Queries and retrieves user memories using hybrid vector similarity search, recency decay, and importance scoring.
     /// </summary>
     [HttpGet("search")]
@@ -93,6 +167,39 @@ public class MemoriesController : ControllerBase
             UserId: userId,
             QueryText: query,
             TopK: safeTopK
+        );
+
+        var result = await _mediator.Send(queryRequest, ct);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Searches user memories using visual inputs (camera snapshots, whiteboard drawings) alongside optional query text.
+    /// </summary>
+    [HttpPost("search-visual")]
+    [EnableRateLimiting("MemoryReadPolicy")]
+    [ProducesResponseType(typeof(FusedMemoryPrompt), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SearchVisualMemories([FromBody] SearchVisualMemoryDto dto, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(dto.ImageBase64))
+        {
+            return BadRequest("ImageBase64 payload must not be empty.");
+        }
+
+        var userId = GetCurrentUserId();
+        var visualQuery = VisualContent.FromBase64(
+            dto.ImageBase64,
+            dto.MimeType,
+            dto.QueryText,
+            dto.Modality);
+
+        var safeTopK = Math.Clamp(dto.TopK <= 0 ? 5 : dto.TopK, 1, 50);
+        var queryRequest = new RetrieveMemoriesQuery(
+            UserId: userId,
+            QueryText: dto.QueryText ?? string.Empty,
+            TopK: safeTopK,
+            VisualQuery: visualQuery
         );
 
         var result = await _mediator.Send(queryRequest, ct);
@@ -178,14 +285,15 @@ public class MemoriesController : ControllerBase
             MergedMemoryIds: dto.MergedMemoryIds,
             ConsolidatedText: dto.ConsolidatedText,
             UserId: userId,
-            ProvenanceLinks: dto.ProvenanceLinks ?? new List<string>()
+            ProvenanceLinks: dto.ProvenanceLinks
         );
-        var newId = await _mediator.Send(command, ct);
-        return Ok(new ConsolidateMemoriesResponseDto(newId, "Consolidated"));
+
+        var resultId = await _mediator.Send(command, ct);
+        return Ok(new ConsolidateMemoriesResponseDto(resultId, "Consolidated"));
     }
 
     /// <summary>
-    /// Applies a legal hold to a memory, preventing automated deletion and archival.
+    /// Places a legal hold on a memory, preventing deletion and automated retention purge.
     /// Requires ComplianceAuditor or Admin role.
     /// </summary>
     [HttpPost("{id:guid}/legal-hold")]

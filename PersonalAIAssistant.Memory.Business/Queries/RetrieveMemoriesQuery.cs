@@ -7,4 +7,5 @@ public record RetrieveMemoriesQuery(
     string UserId,
     string QueryText,
     int TopK = 5,
-    string? ProviderOverride = null) : IRequest<FusedMemoryPrompt>;
+    string? ProviderOverride = null,
+    VisualContent? VisualQuery = null) : IRequest<FusedMemoryPrompt>;

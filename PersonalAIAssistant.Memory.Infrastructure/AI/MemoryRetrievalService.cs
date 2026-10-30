@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using PersonalAIAssistant.Memory.Core.DTOs;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.Persistence;
 using PersonalAIAssistant.Memory.Core.Models;
@@ -34,17 +35,29 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
         {
             var start = DateTimeOffset.UtcNow;
 
-            // 1. Embed query
-            var embedResult = await _embeddingService.GenerateEmbeddingAsync(request.QueryText, ct);
+            // 1. Embed query (multimodal if visual query provided, otherwise text)
+            EmbeddingResult embedResult;
+            if (request.VisualQuery != null)
+            {
+                embedResult = await _embeddingService.GenerateMultimodalEmbeddingAsync(
+                    new MultimodalEmbeddingRequest(
+                        text: string.IsNullOrWhiteSpace(request.QueryText) ? null : request.QueryText,
+                        visual: request.VisualQuery),
+                    ct);
+            }
+            else
+            {
+                embedResult = await _embeddingService.GenerateEmbeddingAsync(request.QueryText, ct);
+            }
 
-            // Record metrics for embedding (mock cost for now)
+            // Record metrics for embedding
             _metricsLogger.Record(new AiCallMetrics(
                 Provider: embedResult.Provider,
                 Model: embedResult.Model,
                 Operation: "retrieval-embed",
-                PromptTokens: request.QueryText.Length / 4, // naive token approx
+                PromptTokens: (request.QueryText?.Length ?? 0) / 4,
                 CompletionTokens: 0,
-                TotalTokens: request.QueryText.Length / 4,
+                TotalTokens: (request.QueryText?.Length ?? 0) / 4,
                 EstimatedCostUsd: 0.000001,
                 Latency: DateTimeOffset.UtcNow - start,
                 WasCacheHit: false,

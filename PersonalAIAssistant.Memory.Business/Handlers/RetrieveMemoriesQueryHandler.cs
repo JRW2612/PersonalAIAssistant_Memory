@@ -18,10 +18,11 @@ public class RetrieveMemoriesQueryHandler : IRequestHandler<RetrieveMemoriesQuer
     public async Task<FusedMemoryPrompt> Handle(RetrieveMemoriesQuery request, CancellationToken cancellationToken)
     {
         var retrievalRequest = new RetrievalRequest(
-            request.UserId,
-            request.QueryText,
-            request.TopK,
-            request.ProviderOverride);
+            UserId: request.UserId,
+            QueryText: request.QueryText,
+            TopK: request.TopK,
+            PreferredProvider: request.ProviderOverride,
+            VisualQuery: request.VisualQuery);
 
         var memories = await _retrievalService.RetrieveAsync(retrievalRequest, cancellationToken);
 

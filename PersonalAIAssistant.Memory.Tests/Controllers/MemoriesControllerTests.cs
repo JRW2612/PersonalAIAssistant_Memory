@@ -257,5 +257,58 @@ namespace PersonalAIAssistant.Memory.Tests.Controllers
             responseDto.NewMemoryId.Should().Be(newId);
             responseDto.Status.Should().Be("Consolidated");
         }
+
+        [Fact]
+        public async Task AddVisualMemory_ValidDto_ReturnsCreatedAtAction_WithMemoryId()
+        {
+            var memoryId = Guid.NewGuid();
+            var dto = new CreateVisualMemoryDto(
+                Description: "Architecture whiteboard snapshot",
+                ImageBase64: Convert.ToBase64String(new byte[] { 1, 2, 3, 4 }),
+                MimeType: "image/jpeg",
+                Modality: VisualModality.WhiteboardDrawing,
+                Importance: MemoryImportance.High
+            );
+
+            _mediatorMock
+                .Setup(m => m.Send(It.Is<AddMemoryCommand>(c =>
+                    c.RawText.Contains("WhiteboardDrawing") &&
+                    c.UserId == "test-user-123" &&
+                    c.Importance == MemoryImportance.High), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(memoryId);
+
+            var result = await _controller.AddVisualMemory(dto, CancellationToken.None);
+
+            var createdResult = result.Should().BeOfType<CreatedAtActionResult>().Subject;
+            createdResult.ActionName.Should().Be(nameof(MemoriesController.GetMemoryById));
+            var resp = createdResult.Value.Should().BeOfType<CreateMemoryResponseDto>().Subject;
+            resp.MemoryId.Should().Be(memoryId);
+        }
+
+        [Fact]
+        public async Task SearchVisualMemories_ValidDto_ReturnsOk_WithFusedMemoryPrompt()
+        {
+            var expectedPrompt = new FusedMemoryPrompt("Visual context retrieved", Array.Empty<RetrievedMemory>());
+            var dto = new SearchVisualMemoryDto(
+                QueryText: "Whiteboard design",
+                ImageBase64: Convert.ToBase64String(new byte[] { 99, 100 }),
+                MimeType: "image/png",
+                Modality: VisualModality.WhiteboardDrawing,
+                TopK: 3
+            );
+
+            _mediatorMock
+                .Setup(m => m.Send(It.Is<RetrieveMemoriesQuery>(q =>
+                    q.UserId == "test-user-123" &&
+                    q.QueryText == "Whiteboard design" &&
+                    q.TopK == 3 &&
+                    q.VisualQuery != null), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(expectedPrompt);
+
+            var result = await _controller.SearchVisualMemories(dto, CancellationToken.None);
+
+            var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+            okResult.Value.Should().Be(expectedPrompt);
+        }
     }
 }

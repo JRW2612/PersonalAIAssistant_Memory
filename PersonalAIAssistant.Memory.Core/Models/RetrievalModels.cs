@@ -6,7 +6,8 @@ namespace PersonalAIAssistant.Memory.Core.Models
         string UserId,
         string QueryText,
         int TopK = 5,
-        string? PreferredProvider = null);
+        string? PreferredProvider = null,
+        VisualContent? VisualQuery = null);
 
     public record RetrievedMemory(
         Guid MemoryId,
@@ -15,7 +16,9 @@ namespace PersonalAIAssistant.Memory.Core.Models
         double VectorScore,
         double RecencyScore,
         MemoryImportance Importance,
-        DateTime CreatedAt);
+        DateTime CreatedAt,
+        VisualModality? VisualModality = null,
+        string? VisualCaption = null);
 
     public record FusedMemoryPrompt(
         string SystemContext,

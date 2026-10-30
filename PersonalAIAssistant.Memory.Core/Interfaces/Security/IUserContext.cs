@@ -14,6 +14,11 @@ namespace PersonalAIAssistant.Memory.Core.Interfaces.Security
         bool IsAuditor => Roles.Contains("ComplianceAuditor", StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
+        /// Optional preferred AI provider set by the user (e.g. "gemini", "openai").
+        /// </summary>
+        string? PreferredProvider => null;
+
+        /// <summary>
         /// Retrieves the client/user-supplied AI provider credential (e.g. BYOK Gemini API key)
         /// provided dynamically when the user logs in to the AI application.
         /// </summary>

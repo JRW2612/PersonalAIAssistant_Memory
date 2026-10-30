@@ -163,8 +163,10 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.AddScoped<IAIProvider, GeminiChatProvider>();
             services.AddScoped<IAIProviderFactory, AIProviderFactory>();
 
-            // Embeddings and LLM Compression Services
-            services.AddScoped<IEmbeddingService, PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi.OpenAiEmbeddingService>();
+            // Embeddings and LLM Compression Services (Multimodal CLIP + Gemini + Router)
+            services.AddScoped<PersonalAIAssistant.Memory.Infrastructure.AI.OpenAi.OpenAiEmbeddingService>();
+            services.AddScoped<PersonalAIAssistant.Memory.Infrastructure.AI.Gemini.GeminiMultimodalEmbeddingService>();
+            services.AddScoped<IEmbeddingService, PersonalAIAssistant.Memory.Infrastructure.AI.MultimodalEmbeddingRouter>();
             services.AddScoped<ICompressionService, PersonalAIAssistant.Memory.Infrastructure.AI.LlmCompressionService>();
 
             // Teams notification sender
@@ -224,13 +226,19 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.AddScoped<IProviderTokenService, ProviderTokenService>();
             services.AddScoped<IWorkloadAuthenticationService, WorkloadAuthenticationService>();
 
-            // ── Vector Database (Qdrant) ─────────────────────────────────────
+            // ── Vector Database (Qdrant:Cloud vs Qdrant:LocalEdge) ───────────
             services.Configure<QdrantOptions>(configuration.GetSection(QdrantOptions.SectionName));
             services.AddSingleton(sp =>
             {
                 var qdrantOpts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<QdrantOptions>>().Value;
-                return new QdrantClient(host: qdrantOpts.Host, port: qdrantOpts.Port, https: qdrantOpts.Https, apiKey: qdrantOpts.ApiKey);
+                if (qdrantOpts.IsCloudMode)
+                {
+                    return new QdrantClient(host: qdrantOpts.Host, port: qdrantOpts.Port, https: qdrantOpts.Https, apiKey: qdrantOpts.ApiKey);
+                }
+                return new QdrantClient(host: qdrantOpts.Host, port: qdrantOpts.Port, https: false, apiKey: string.IsNullOrWhiteSpace(qdrantOpts.ApiKey) ? null : qdrantOpts.ApiKey);
             });
+            services.AddSingleton<EmbeddedEdgeVectorMemoryRepository>();
+
             var useInMemory = configuration.GetValue<bool>("UseInMemoryStore", false);
             if (useInMemory)
             {
