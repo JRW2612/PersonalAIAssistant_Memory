@@ -5,6 +5,7 @@ using PersonalAIAssistant.Memory.Core.Domains.Enums;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
 using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
+using PersonalAIAssistant.Memory.Core.Domains.ValueObjects;
 using PersonalAIAssistant.Memory.Events;
 
 namespace PersonalAIAssistant.Memory.Business.Handlers;
@@ -62,7 +63,12 @@ public class AddMemoryCommandHandler : IRequestHandler<AddMemoryCommand, Guid>
 
         foreach (var chunk in chunks)
         {
-            var aggregate = new MemoryAggregate();
+            var deterministicId = request.DeterministicMemoryId.HasValue
+                ? DeriveChunkId(request.DeterministicMemoryId.Value, chunk.Index)
+                : (Guid?)null;
+            var aggregate = deterministicId.HasValue
+                ? new MemoryAggregate(new MemoryId(deterministicId.Value))
+                : new MemoryAggregate();
 
             var chunkTags = request.Tags?.ToList() ?? new List<string>();
             if (customSourceTag != null && !chunkTags.Contains(customSourceTag, StringComparer.OrdinalIgnoreCase))
@@ -88,6 +94,12 @@ public class AddMemoryCommandHandler : IRequestHandler<AddMemoryCommand, Guid>
 
             var streamId = $"memory-{aggregate.Id.Value}";
 
+            if (deterministicId.HasValue && (await _eventStore.GetEventsAsync(streamId, cancellationToken)).Any())
+            {
+                if (firstAggregateId == Guid.Empty) firstAggregateId = deterministicId.Value;
+                continue;
+            }
+
             // Create outbox messages for each event so they can be published reliably by the outbox dispatcher
             var outboxMessages = uncommittedEvents.Select(evt => new PersonalAIAssistant.Memory.Core.Messages.OutboxMessage
             {
@@ -111,5 +123,11 @@ public class AddMemoryCommandHandler : IRequestHandler<AddMemoryCommand, Guid>
         // Events are persisted and outbox entries created. A background outbox dispatcher will publish them to RabbitMQ.
 
         return firstAggregateId == Guid.Empty ? Guid.NewGuid() : firstAggregateId;
+    }
+
+    private static Guid DeriveChunkId(Guid rootId, int chunkIndex)
+    {
+        var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{rootId:N}:{chunkIndex}"));
+        return new Guid(bytes.AsSpan(0, 16));
     }
 }

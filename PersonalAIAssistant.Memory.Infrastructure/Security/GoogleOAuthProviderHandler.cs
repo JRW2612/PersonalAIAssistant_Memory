@@ -50,7 +50,7 @@ public sealed class GoogleOAuthProviderHandler : IOAuthProviderHandler
         }), ct);
         response.EnsureSuccessStatusCode();
         var token = await response.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken: ct) ?? throw new InvalidOperationException("Google returned an empty token response.");
-        return new OAuthTokenResult(token.AccessToken, token.RefreshToken, DateTime.UtcNow.AddSeconds(token.ExpiresIn));
+        return new OAuthTokenResult(token.AccessToken, token.RefreshToken, DateTime.UtcNow.AddSeconds(token.ExpiresIn), GrantedScopes: token.Scope);
     }
 
     public async Task<OAuthTokenResult?> RefreshTokenAsync(string refreshToken, CancellationToken ct = default)
@@ -84,5 +84,5 @@ public sealed class GoogleOAuthProviderHandler : IOAuthProviderHandler
         if (string.IsNullOrWhiteSpace(_options.Google.ClientId) || string.IsNullOrWhiteSpace(_options.Google.ClientSecret))
             throw new InvalidOperationException("Google OAuth client credentials are not configured.");
     }
-    private sealed class TokenResponse { public string AccessToken { get; set; } = string.Empty; public string? RefreshToken { get; set; } public int ExpiresIn { get; set; } }
+    private sealed class TokenResponse { public string AccessToken { get; set; } = string.Empty; public string? RefreshToken { get; set; } public int ExpiresIn { get; set; } public string? Scope { get; set; } }
 }

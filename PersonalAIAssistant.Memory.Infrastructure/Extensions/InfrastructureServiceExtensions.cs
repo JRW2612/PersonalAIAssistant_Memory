@@ -97,7 +97,9 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.AddSingleton<IAiGovernanceValidator, CorporateAiGovernanceValidator>();
             services.Configure<OpenAiOptions>(configuration.GetSection(OpenAiOptions.SectionName));
             services.Configure<GeminiOptions>(configuration.GetSection(GeminiOptions.SectionName));
+            services.Configure<AnthropicOptions>(configuration.GetSection(AnthropicOptions.SectionName));
             services.Configure<TeamsOptions>(configuration.GetSection(TeamsOptions.SectionName));
+            services.Configure<ProviderConnectionOptions>(configuration.GetSection(ProviderConnectionOptions.SectionName));
             services.Configure<ConversationBufferOptions>(configuration.GetSection(ConversationBufferOptions.SectionName));
 
             services.Configure<ChunkingOptions>(configuration.GetSection("Chunking"));
@@ -137,6 +139,13 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
                     client.Timeout = TimeSpan.FromSeconds(gateway.TimeoutSeconds);
                     client.DefaultRequestHeaders.Add("X-AI-Gateway-Key", gateway.InternalAuthToken);
                 }).AddStandardResilienceHandler();
+
+                services.AddHttpClient("anthropic", client =>
+                {
+                    client.BaseAddress = new Uri(gatewayBaseUrl, "anthropic/");
+                    client.Timeout = TimeSpan.FromSeconds(gateway.TimeoutSeconds);
+                    client.DefaultRequestHeaders.Add("X-AI-Gateway-Key", gateway.InternalAuthToken);
+                }).AddStandardResilienceHandler();
             }
             else
             {
@@ -151,6 +160,12 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
                     client.BaseAddress = new Uri("https://generativelanguage.googleapis.com/v1beta/");
                     client.Timeout = TimeSpan.FromSeconds(60);
                 }).AddStandardResilienceHandler();
+
+                services.AddHttpClient("anthropic", client =>
+                {
+                    client.BaseAddress = new Uri("https://api.anthropic.com/v1/");
+                    client.Timeout = TimeSpan.FromSeconds(60);
+                }).AddStandardResilienceHandler();
             }
 
             services.AddHttpClient("teams", client =>
@@ -161,6 +176,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             // ── Provider implementations ─────────────────────────────────────
             services.AddScoped<IAIProvider, OpenAiChatProvider>();
             services.AddScoped<IAIProvider, GeminiChatProvider>();
+            services.AddScoped<IAIProvider, PersonalAIAssistant.Memory.Infrastructure.AI.Anthropic.AnthropicChatProvider>();
             services.AddScoped<IAIProviderFactory, AIProviderFactory>();
 
             // Embeddings and LLM Compression Services (Multimodal CLIP + Gemini + Router)
@@ -223,6 +239,10 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.AddSingleton<IOAuthStateManager, OAuthStateManager>();
             services.AddHttpClient<GoogleOAuthProviderHandler>();
             services.AddScoped<IOAuthProviderHandler, GoogleOAuthProviderHandler>();
+            services.AddHttpClient("meeting-oauth", client => client.Timeout = TimeSpan.FromSeconds(30));
+            services.AddScoped<IOAuthProviderHandler, MicrosoftTeamsOAuthProviderHandler>();
+            services.AddScoped<IOAuthProviderHandler, ZoomOAuthProviderHandler>();
+            services.AddScoped<IOAuthProviderHandler, GoogleMeetOAuthProviderHandler>();
             services.AddScoped<IProviderTokenService, ProviderTokenService>();
             services.AddScoped<IWorkloadAuthenticationService, WorkloadAuthenticationService>();
 

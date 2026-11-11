@@ -66,7 +66,7 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
             var userId = ResolveUserId();
             var connections = await _repo.GetUserConnectionsAsync(userId, ct);
 
-            var availableProviders = new[] { "gemini", "openai", "anthropic" };
+            var availableProviders = new[] { "gemini", "openai", "anthropic", "teams", "zoom", "meet" };
             var results = new List<ProviderConnectionDto>();
 
             foreach (var p in availableProviders)
@@ -139,7 +139,13 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
 
             var scopeList = !string.IsNullOrWhiteSpace(scopes)
                 ? scopes.Split(new[] { ' ', ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
-                : new[] { "ai.generate", "ai.memory.read", "ai.memory.write" };
+                : provider.ToLowerInvariant() switch
+                {
+                    "teams" => new[] { "OnlineMeetingTranscript.Read.All", "offline_access" },
+                    "zoom" => new[] { "cloud_recording:read:meeting_transcript" },
+                    "meet" => new[] { "https://www.googleapis.com/auth/meetings.space.readonly", "openid", "email" },
+                    _ => new[] { "ai.generate", "ai.memory.read", "ai.memory.write" }
+                };
 
             var state = _stateManager.Create(userId, tenantId, provider, scopeList);
             var authUrl = handler.BuildAuthorizationUrl(callbackUrl, state, scopeList);
@@ -202,7 +208,12 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
             {
                 var tokenResult = await handler.ExchangeCodeAsync(code, redirectUri, ct);
 
-                var grantedScopes = string.Join(" ", oAuthState.Scopes);
+                // Persist scopes returned by the provider, never the scopes merely requested in OAuth state.
+                var isMeetingProvider = new[] { "teams", "zoom", "meet" }.Contains(provider, StringComparer.OrdinalIgnoreCase);
+                var actualScopes = tokenResult.GrantedScopes;
+                var grantedScopes = !string.IsNullOrWhiteSpace(actualScopes)
+                    ? string.Join(" ", actualScopes.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                    : isMeetingProvider ? string.Empty : string.Join(" ", oAuthState.Scopes);
 
                 var connection = new ProviderConnectionEntity
                 {
@@ -260,6 +271,14 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
         {
             var userId = ResolveUserId();
             var tenantId = ResolveTenantId();
+
+            if (provider.Equals("teams", StringComparison.OrdinalIgnoreCase) ||
+                provider.Equals("zoom", StringComparison.OrdinalIgnoreCase) ||
+                provider.Equals("meet", StringComparison.OrdinalIgnoreCase))
+                return BadRequest("Meeting platforms must be connected through the OAuth authorization flow so transcript scopes are verified by the provider.");
+
+            if (!new[] { "gemini", "openai", "anthropic" }.Contains(provider, StringComparer.OrdinalIgnoreCase))
+                return BadRequest("Unsupported provider.");
 
             var token = !string.IsNullOrWhiteSpace(request.ApiKey) ? request.ApiKey : request.AccessToken;
             if (string.IsNullOrWhiteSpace(token))

@@ -69,7 +69,7 @@ app.MapPost("/v1/{provider}/{**path}", async (string provider, string path, Http
     {
         Content = new StringContent(safePayload, Encoding.UTF8, context.Request.ContentType ?? "application/json")
     };
-    route.ApplyCredentials(outbound);
+    route.ApplyCredentials(outbound, context.Request);
     foreach (var header in context.Request.Headers.Where(h => h.Key is "Accept" or "X-Request-Id"))
         outbound.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
 
@@ -133,10 +133,16 @@ sealed class ProviderRoute
         return new ProviderRoute(target, config[$"{section}:Authorization"], keyHeader, apiKey);
     }
 
-    public void ApplyCredentials(HttpRequestMessage request)
+    public void ApplyCredentials(HttpRequestMessage request, HttpRequest incoming)
     {
         if (!string.IsNullOrWhiteSpace(Authorization)) request.Headers.TryAddWithoutValidation("Authorization", Authorization);
-        if (!string.IsNullOrWhiteSpace(ApiKeyHeader) && !string.IsNullOrWhiteSpace(ApiKey)) request.Headers.TryAddWithoutValidation(ApiKeyHeader, ApiKey);
+        else if (string.IsNullOrWhiteSpace(ApiKey) && incoming.Headers.TryGetValue("Authorization", out var authorization))
+            request.Headers.TryAddWithoutValidation("Authorization", authorization.ToArray());
+
+        if (!string.IsNullOrWhiteSpace(ApiKeyHeader) && !string.IsNullOrWhiteSpace(ApiKey))
+            request.Headers.TryAddWithoutValidation(ApiKeyHeader, ApiKey);
+        else if (!string.IsNullOrWhiteSpace(ApiKeyHeader) && incoming.Headers.TryGetValue(ApiKeyHeader, out var apiKey))
+            request.Headers.TryAddWithoutValidation(ApiKeyHeader, apiKey.ToArray());
     }
 }
 

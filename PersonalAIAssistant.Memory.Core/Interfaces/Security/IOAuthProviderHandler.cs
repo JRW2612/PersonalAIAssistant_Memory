@@ -1,6 +1,6 @@
 namespace PersonalAIAssistant.Memory.Core.Interfaces.Security;
 
-public sealed record OAuthTokenResult(string AccessToken, string? RefreshToken, DateTime? ExpiresAtUtc, string? AccountEmail = null, string? AccountName = null);
+public sealed record OAuthTokenResult(string AccessToken, string? RefreshToken, DateTime? ExpiresAtUtc, string? AccountEmail = null, string? AccountName = null, string? GrantedScopes = null);
 
 public interface IOAuthProviderHandler
 {

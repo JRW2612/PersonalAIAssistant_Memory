@@ -38,6 +38,8 @@ builder.Services.AddControllers(mvcOptions =>
     options.JsonSerializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
 });
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddHttpClient("meeting-platforms", client => client.Timeout = TimeSpan.FromMinutes(2));
+builder.Services.AddScoped<PersonalAIAssistant.Memory.Api.Services.MeetingTranscriptProviderClient>();
 builder.Services.AddScoped<PersonalAIAssistant.Memory.Core.Interfaces.Security.IUserContext, PersonalAIAssistant.Memory.Api.Security.HttpUserContext>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>

@@ -22,6 +22,7 @@ namespace PersonalAIAssistant.Memory.Core.Models
 
         public OpenAiOptions OpenAi { get; set; } = new();
         public GeminiOptions Gemini { get; set; } = new();
+        public AnthropicOptions Anthropic { get; set; } = new();
         public ChunkingOptions Chunking { get; set; } = new();
     }
 
@@ -79,6 +80,16 @@ namespace PersonalAIAssistant.Memory.Core.Models
         public int MaxOutputTokens { get; set; } = 1024;
 
         /// <summary>Sampling temperature.</summary>
+        public double Temperature { get; set; } = 0.3;
+    }
+
+    /// <summary>Anthropic Claude Messages API settings.</summary>
+    public sealed class AnthropicOptions
+    {
+        public const string SectionName = "AI:Anthropic";
+        public string ApiKey { get; set; } = string.Empty;
+        public string Model { get; set; } = "claude-haiku-4-5-20251001";
+        public int MaxTokens { get; set; } = 1024;
         public double Temperature { get; set; } = 0.3;
     }
 

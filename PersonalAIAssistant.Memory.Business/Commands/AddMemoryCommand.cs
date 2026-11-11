@@ -11,5 +11,6 @@ public record AddMemoryCommand
     IReadOnlyList<string> Tags,
     string UserId,
     MemoryImportance Importance = MemoryImportance.Medium,
-    string? CorrelationId = null
+    string? CorrelationId = null,
+    Guid? DeterministicMemoryId = null
 ) : IRequest<Guid>, ICorrelatedRequest;
