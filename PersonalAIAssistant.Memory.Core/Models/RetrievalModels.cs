@@ -18,7 +18,8 @@ namespace PersonalAIAssistant.Memory.Core.Models
         MemoryImportance Importance,
         DateTime CreatedAt,
         VisualModality? VisualModality = null,
-        string? VisualCaption = null);
+        string? VisualCaption = null,
+        double LexicalScore = 0);
 
     public record FusedMemoryPrompt(
         string SystemContext,

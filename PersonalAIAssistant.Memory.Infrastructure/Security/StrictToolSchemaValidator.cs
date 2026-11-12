@@ -20,7 +20,6 @@ public sealed class StrictToolSchemaValidator : IToolSchemaValidator
                 ["rawText"] = new(JsonValueKind.String, true),
                 ["source"] = new(JsonValueKind.String, true),
                 ["tags"] = new(JsonValueKind.Array, true, JsonValueKind.String),
-                ["tags"] = new(JsonValueKind.Array, true, JsonValueKind.String),
                 ["userId"] = new(JsonValueKind.String, true),
                 ["importance"] = new(JsonValueKind.Number),
                 ["correlationId"] = new(JsonValueKind.String)
@@ -38,7 +37,7 @@ public sealed class StrictToolSchemaValidator : IToolSchemaValidator
                 ["mergedMemoryIds"] = new(JsonValueKind.Array, true, JsonValueKind.String),
                 ["consolidatedText"] = new(JsonValueKind.String, true),
                 ["userId"] = new(JsonValueKind.String, true),
-                ["provenanceLinks"] = new(JsonValueKind.Array, true, JsonValueKind.String)
+                ["provenanceLinks"] = new(JsonValueKind.Array, false, JsonValueKind.String)
             },
             ["temporal.fact.assert"] = new Dictionary<string, Field>(StringComparer.OrdinalIgnoreCase)
             {

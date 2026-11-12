@@ -63,8 +63,18 @@ public class AuthorizationBehavior<TRequest, TResponse> : IPipelineBehavior<TReq
                             $"Cross-tenant access denied for memory '{authorizedRequest.MemoryId}'.");
                     }
 
-                    // Ownership check
-                    if (!string.IsNullOrEmpty(memory.UserId) && memory.UserId != userId)
+                    // Ownership check. Missing ownership data is unverifiable and must fail closed.
+                    if (string.IsNullOrEmpty(memory.UserId))
+                    {
+                        _logger.LogWarning(
+                            "Authorization denied because memory {MemoryId} has no owner in the read model",
+                            authorizedRequest.MemoryId);
+                        _auditLogger?.LogAccessDenied(userId, typeof(TRequest).Name, authorizedRequest.MemoryId.ToString(), "Memory ownership could not be verified");
+                        throw new UnauthorizedAccessException(
+                            $"Access denied for memory '{authorizedRequest.MemoryId}' because ownership could not be verified.");
+                    }
+
+                    if (memory.UserId != userId)
                     {
                         _logger.LogWarning(
                             "[SECURITY VIOLATION] User {UserId} attempted unauthorized action {Action} on Memory {MemoryId} owned by {OwnerId}",
@@ -73,6 +83,15 @@ public class AuthorizationBehavior<TRequest, TResponse> : IPipelineBehavior<TReq
                         throw new UnauthorizedAccessException(
                             $"User '{userId}' is not authorized to perform action on memory '{authorizedRequest.MemoryId}'.");
                     }
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "Authorization denied because memory {MemoryId} is missing from the read model for user {UserId}",
+                        authorizedRequest.MemoryId, userId);
+                    _auditLogger?.LogAccessDenied(userId, typeof(TRequest).Name, authorizedRequest.MemoryId.ToString(), "Memory ownership could not be verified");
+                    throw new UnauthorizedAccessException(
+                        $"Access denied for memory '{authorizedRequest.MemoryId}' because ownership could not be verified.");
                 }
             }
         }

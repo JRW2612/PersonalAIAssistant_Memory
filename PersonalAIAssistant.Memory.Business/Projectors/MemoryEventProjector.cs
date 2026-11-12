@@ -65,16 +65,7 @@ public class MemoryEventProjector : IMemoryEventHandler
         if (evt.UpdatedFields != null && evt.UpdatedFields.TryGetValue("RawText", out var newText))
         {
             var summary = newText.Length > 300 ? newText[..300] + "..." : newText;
-            var model = new MemoryReadModel
-            {
-                MemoryId = evt.AggregateId,
-                UserId = evt.UserId ?? string.Empty,
-                Summary = summary,
-                TokenCount = CountTokens(summary),
-                Archived = false,
-                CreatedAt = evt.Timestamp
-            };
-            await _readRepo.UpsertAsync(model, ct);
+            await UpsertSummaryAsync(evt.AggregateId, evt.UserId, summary, evt.Timestamp, ct);
         }
 
         await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
@@ -86,17 +77,7 @@ public class MemoryEventProjector : IMemoryEventHandler
         if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
 
         var summary = evt.CompressedText ?? string.Empty;
-        var model = new MemoryReadModel
-        {
-            MemoryId = evt.AggregateId,
-            UserId = evt.UserId ?? string.Empty,
-            Summary = summary,
-            TokenCount = CountTokens(summary),
-            Archived = false,
-            CreatedAt = evt.Timestamp
-        };
-
-        await _readRepo.UpsertAsync(model, ct);
+        await UpsertSummaryAsync(evt.AggregateId, evt.UserId, summary, evt.Timestamp, ct);
         await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
     }
 
@@ -106,17 +87,7 @@ public class MemoryEventProjector : IMemoryEventHandler
         if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
 
         var summary = evt.ConsolidatedText ?? string.Empty;
-        var model = new MemoryReadModel
-        {
-            MemoryId = evt.AggregateId,
-            UserId = evt.UserId ?? string.Empty,
-            Summary = summary,
-            TokenCount = CountTokens(summary),
-            Archived = false,
-            CreatedAt = evt.Timestamp
-        };
-
-        await _readRepo.UpsertAsync(model, ct);
+        await UpsertSummaryAsync(evt.AggregateId, evt.UserId, summary, evt.Timestamp, ct);
         await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
     }
 
@@ -264,5 +235,25 @@ public class MemoryEventProjector : IMemoryEventHandler
     {
         if (string.IsNullOrWhiteSpace(text)) return 0;
         return text.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries).Length;
+    }
+
+    private async Task UpsertSummaryAsync(Guid memoryId, string? userId, string summary, DateTime timestamp, CancellationToken ct)
+    {
+        var model = (await _readRepo.GetMemoriesByIdsAsync(new[] { memoryId }, ct)).FirstOrDefault()
+            ?? new MemoryReadModel
+            {
+                MemoryId = memoryId,
+                UserId = userId ?? string.Empty,
+                CreatedAt = timestamp
+            };
+
+        // Summary events update content; ownership, importance, archive state, and creation time
+        // belong to other event types and must survive this projection.
+        if (string.IsNullOrEmpty(model.UserId) && !string.IsNullOrEmpty(userId))
+            model.UserId = userId;
+        model.Summary = summary;
+        model.TokenCount = CountTokens(summary);
+
+        await _readRepo.UpsertAsync(model, ct);
     }
 }

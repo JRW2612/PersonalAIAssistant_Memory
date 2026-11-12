@@ -6,6 +6,12 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
     {
         public IReadOnlyList<TextChunk> Chunk(string text, ChunkOptions options)
         {
+            ArgumentNullException.ThrowIfNull(options);
+            if (options.MaxTokens <= 0)
+                throw new ArgumentOutOfRangeException(nameof(options), "MaxTokens must be greater than zero.");
+            if (options.OverlapTokens < 0 || options.OverlapTokens >= options.MaxTokens)
+                throw new ArgumentOutOfRangeException(nameof(options), "OverlapTokens must be non-negative and less than MaxTokens.");
+
             if (string.IsNullOrWhiteSpace(text))
             {
                 return Array.Empty<TextChunk>();

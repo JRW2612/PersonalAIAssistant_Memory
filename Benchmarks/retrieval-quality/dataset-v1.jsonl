@@ -1,0 +1,6 @@
+{"query_id":"semantic-focus-location","category":"semantic","user_id":"user-mira","query":"Where does Mira like to work when she needs to focus?","expected_memory_ids":["mira-focus-location"],"forbidden_memory_ids":[]}
+{"query_id":"exact-reference","category":"exact-entity","user_id":"user-mira","query":"What is the invoice reference for the Atlas renewal?","expected_memory_ids":["mira-atlas-invoice"],"forbidden_memory_ids":[]}
+{"query_id":"current-preference","category":"temporal-current","user_id":"user-nia","query":"Which programming language does Nia prefer now?","expected_memory_ids":["nia-current-language"],"forbidden_memory_ids":["nia-former-language"]}
+{"query_id":"historical-preference","category":"temporal-history","user_id":"user-nia","query":"Which language did Nia use before switching to Rust?","expected_memory_ids":["nia-former-language"],"forbidden_memory_ids":[]}
+{"query_id":"source-attribution","category":"provenance","user_id":"user-mira","query":"Which memory records Mira's request to avoid meetings on Friday afternoons?","expected_memory_ids":["mira-friday-meetings"],"forbidden_memory_ids":[]}
+{"query_id":"user-isolation","category":"scope-isolation","user_id":"user-mira","query":"What is Nia's home address?","expected_memory_ids":[],"forbidden_memory_ids":["nia-home-address"]}
