@@ -22,6 +22,8 @@ The API exposes an authenticated, stateless MCP endpoint at `/mcp`. Configure Co
 - `memory_search(query, topK?)` to retrieve relevant memories for the signed-in user.
 - `memory_save(content, source?)` to save a decision or fact for that user.
 
+Authenticated agent clients can also inspect current temporal facts with `GET /api/v1/agenttools/facts` and the value history for a subject/predicate pair with `GET /api/v1/agenttools/facts/history?subject=Alice&predicate=works_at`. History responses retain confidence, source, and validity timestamps so clients can distinguish earlier assertions from current ones.
+
 Example Antigravity MCP server configuration:
 
 ```json

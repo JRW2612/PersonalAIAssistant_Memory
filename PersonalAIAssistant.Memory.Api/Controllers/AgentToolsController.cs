@@ -113,4 +113,43 @@ public class AgentToolsController : ControllerBase
         var facts = await _mediator.Send(query, ct);
         return Ok(facts);
     }
+
+    /// <summary>
+    /// Retrieves the temporal history for a subject-predicate pair belonging to the authenticated user.
+    /// Results include prior values, validity dates, confidence, and source.
+    /// </summary>
+    [HttpGet("facts/history")]
+    [EnableRateLimiting("MemoryReadPolicy")]
+    [ProducesResponseType(typeof(IReadOnlyList<TemporalFact>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetFactHistory(
+        [FromQuery] string subject,
+        [FromQuery] string predicate,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(subject))
+        {
+            return BadRequest("Subject must not be empty.");
+        }
+
+        if (subject.Length > 256)
+        {
+            return BadRequest("Subject must not exceed 256 characters.");
+        }
+
+        if (string.IsNullOrWhiteSpace(predicate))
+        {
+            return BadRequest("Predicate must not be empty.");
+        }
+
+        if (predicate.Length > 128)
+        {
+            return BadRequest("Predicate must not exceed 128 characters.");
+        }
+
+        var userId = GetCurrentUserId();
+        var query = new GetTemporalFactHistoryQuery(userId, subject, predicate);
+        var facts = await _mediator.Send(query, ct);
+        return Ok(facts);
+    }
 }
