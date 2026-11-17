@@ -38,6 +38,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
 
                     // Grab a small batch of pending outbox messages ordered by when they happened.
                     var docs = await db.OutboxMessages
+                        .TagWith("UserAction: EfOutboxDispatcher.GetPendingMessages | User: system | Tenant: system")
                         .Where(o => o.DispatchedAt == null)
                         .OrderBy(o => o.OccurredAt)
                         .Take(_batchSize)
@@ -69,9 +70,17 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
                                 continue;
                             }
 
+                            if (string.IsNullOrEmpty(evt.Traceparent))
+                            {
+                                evt.Traceparent = PersonalAIAssistant.Memory.Core.Observability.W3CTraceContext.Create().ToString();
+                            }
+
                             if (publishEndpoint != null)
                             {
-                                await publishEndpoint.Publish((object)evt, stoppingToken);
+                                await publishEndpoint.Publish((object)evt, sendContext =>
+                                {
+                                    sendContext.Headers.Set(PersonalAIAssistant.Memory.Core.Observability.W3CTraceContext.HeaderName, evt.Traceparent);
+                                }, stoppingToken);
                             }
 
                             doc.DispatchedAt = DateTime.UtcNow;

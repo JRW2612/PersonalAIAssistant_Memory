@@ -70,6 +70,10 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
                 _logger.LogWarning(ex, "[Enterprise SSO] Cross-tenant or unauthorized OIDC attempt.");
                 return StatusCode(StatusCodes.Status403Forbidden, new { error = ex.Message });
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "[Enterprise SSO] OIDC Token exchange failed.");
@@ -112,6 +116,10 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
             {
                 _logger.LogWarning(ex, "[Enterprise SSO] Cross-tenant or unauthorized SAML attempt.");
                 return StatusCode(StatusCodes.Status403Forbidden, new { error = ex.Message });
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {

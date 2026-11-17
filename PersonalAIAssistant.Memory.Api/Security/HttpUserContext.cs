@@ -13,6 +13,9 @@ public sealed class HttpUserContext : IUserContext
     public string TenantId { get; }
     public IReadOnlyList<string> Roles { get; }
     public bool IsAuthenticated { get; }
+    public string? CurrentAction { get; }
+    public string? CorrelationId { get; }
+    public string? Traceparent { get; }
 
     private readonly IHttpContextAccessor _accessor;
 
@@ -40,6 +43,30 @@ public sealed class HttpUserContext : IUserContext
                 .Select(c => c.Value)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList() ?? new List<string>()).AsReadOnly();
+
+        var httpContext = accessor.HttpContext;
+        Traceparent = (httpContext != null && httpContext.Items.TryGetValue("Traceparent", out var tp) && tp is string tps && !string.IsNullOrWhiteSpace(tps))
+                     ? tps
+                     : (httpContext != null && httpContext.Request.Headers.TryGetValue("traceparent", out var tph) ? tph.ToString() : null)
+                     ?? System.Diagnostics.Activity.Current?.Id;
+
+        CorrelationId = System.Diagnostics.Activity.Current?.TraceId.ToString()
+                     ?? httpContext?.TraceIdentifier
+                     ?? (httpContext != null && httpContext.Request.Headers.TryGetValue("X-Correlation-ID", out var cid) ? cid.ToString() : null)
+                     ?? (httpContext != null && httpContext.Request.Headers.TryGetValue("X-Request-ID", out var rid) ? rid.ToString() : null);
+
+        if (httpContext != null)
+        {
+            if (httpContext.Items.TryGetValue("UserAction", out var act) && act is string s && !string.IsNullOrWhiteSpace(s))
+            {
+                CurrentAction = s;
+            }
+            else
+            {
+                var endpoint = httpContext.GetEndpoint();
+                CurrentAction = endpoint?.DisplayName ?? $"{httpContext.Request.Method} {httpContext.Request.Path}";
+            }
+        }
     }
 
     public string? GetApiKey(string providerName)

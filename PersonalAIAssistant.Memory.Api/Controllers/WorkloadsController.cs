@@ -13,6 +13,7 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
 {
     [ApiController]
     [Route("api/v1/workloads")]
+    [Authorize]
     public class WorkloadsController : ControllerBase
     {
         private readonly IWorkloadIdentityRepository _repo;
@@ -169,7 +170,15 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
                 authType = WorkloadAuthType.OidcWorkloadIdentity;
             }
 
-            var tenantId = !string.IsNullOrWhiteSpace(request.TenantId) ? request.TenantId : ResolveTenantId();
+            // Cross-tenant BOLA defense: only administrators may register workloads under a foreign tenant
+            var callerTenant = ResolveTenantId();
+            if (!string.IsNullOrWhiteSpace(request.TenantId) && !_userContext.IsAdmin && !string.Equals(request.TenantId, callerTenant, StringComparison.OrdinalIgnoreCase))
+            {
+                _auditLogger.LogAccessDenied(_userContext.UserId ?? "anonymous", "REGISTER_WORKLOAD", request.ClientId, "Cross-tenant workload registration forbidden");
+                return Forbid();
+            }
+
+            var tenantId = _userContext.IsAdmin && !string.IsNullOrWhiteSpace(request.TenantId) ? request.TenantId : callerTenant;
 
             string? hashedSecret = null;
             if (!string.IsNullOrWhiteSpace(request.ClientSecret))
@@ -227,14 +236,30 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
 
         /// <summary>
         /// Revokes access for a Cloud Workload identity.
+        /// Defends against cross-tenant IDOR by ensuring workload belongs to caller's tenant.
         /// </summary>
         [HttpDelete("{clientId}")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> RevokeWorkload(
             string clientId,
             [FromBody] RevokeWorkloadRequestDto? request,
             CancellationToken ct)
         {
+            var existing = await _repo.GetByClientIdAsync(clientId, ct);
+            if (existing == null)
+            {
+                return NotFound(new { error = $"Workload '{clientId}' was not found." });
+            }
+
+            var callerTenant = ResolveTenantId();
+            if (!_userContext.IsAdmin && !string.Equals(existing.TenantId, callerTenant, StringComparison.OrdinalIgnoreCase))
+            {
+                _auditLogger.LogAccessDenied(_userContext.UserId ?? "anonymous", "REVOKE_WORKLOAD", clientId, "Cross-tenant workload revocation forbidden");
+                return Forbid();
+            }
+
             var reason = request?.Reason ?? "Administratively revoked";
             await _repo.RevokeAsync(clientId, reason, ct);
             _auditLogger.LogAccessDenied(clientId, "REVOKE_WORKLOAD", clientId, reason);

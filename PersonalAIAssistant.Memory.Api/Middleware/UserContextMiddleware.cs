@@ -35,6 +35,10 @@ public class UserContextMiddleware
             }
         }
 
+        var endpoint = context.GetEndpoint();
+        var actionName = endpoint?.DisplayName ?? $"{context.Request.Method} {context.Request.Path}";
+        context.Items["UserAction"] = actionName;
+
         await _next(context);
     }
 }

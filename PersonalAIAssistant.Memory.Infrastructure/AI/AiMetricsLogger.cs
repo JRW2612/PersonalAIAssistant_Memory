@@ -36,15 +36,24 @@ namespace PersonalAIAssistant.Memory.Infrastructure.AI
 
         public Task<AiUsageSummary> GetSummaryAsync(string userId, DateTimeOffset since, CancellationToken ct)
         {
-            var userMetrics = _inMemoryStore
-                .Where(m => m.UserId == userId && m.Timestamp >= since)
+            return GetBatchSummaryAsync(new[] { userId }, since, ct);
+        }
+
+        public Task<AiUsageSummary> GetBatchSummaryAsync(IEnumerable<string> userOrWorkloadIds, DateTimeOffset since, CancellationToken ct)
+        {
+            var idSet = userOrWorkloadIds is HashSet<string> set
+                ? set
+                : new HashSet<string>(userOrWorkloadIds, StringComparer.OrdinalIgnoreCase);
+
+            var matchedMetrics = _inMemoryStore
+                .Where(m => m.UserId != null && idSet.Contains(m.UserId) && m.Timestamp >= since)
                 .ToList();
 
             var summary = new AiUsageSummary(
-                TotalPromptTokens: userMetrics.Sum(m => m.PromptTokens),
-                TotalCompletionTokens: userMetrics.Sum(m => m.CompletionTokens),
-                TotalEstimatedCostUsd: userMetrics.Sum(m => m.EstimatedCostUsd),
-                CallCount: userMetrics.Count
+                TotalPromptTokens: matchedMetrics.Sum(m => m.PromptTokens),
+                TotalCompletionTokens: matchedMetrics.Sum(m => m.CompletionTokens),
+                TotalEstimatedCostUsd: matchedMetrics.Sum(m => m.EstimatedCostUsd),
+                CallCount: matchedMetrics.Count
             );
 
             return Task.FromResult(summary);

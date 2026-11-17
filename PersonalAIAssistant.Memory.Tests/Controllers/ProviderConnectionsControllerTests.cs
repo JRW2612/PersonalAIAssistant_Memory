@@ -78,7 +78,7 @@ namespace PersonalAIAssistant.Memory.Tests.Controllers
             var okResult = Assert.IsType<OkObjectResult>(actionResult);
             var dtos = Assert.IsAssignableFrom<IReadOnlyList<ProviderConnectionDto>>(okResult.Value);
 
-            Assert.Equal(3, dtos.Count); // gemini, openai, anthropic
+            Assert.Equal(6, dtos.Count); // gemini, openai, anthropic, teams, zoom, meet
 
             var gemini = dtos.First(d => d.Provider == "gemini");
             Assert.True(gemini.IsActive);

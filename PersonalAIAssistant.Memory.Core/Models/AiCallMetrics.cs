@@ -18,5 +18,8 @@ namespace PersonalAIAssistant.Memory.Core.Models
         int TotalPromptTokens,
         int TotalCompletionTokens,
         double TotalEstimatedCostUsd,
-        int CallCount);
+        int CallCount)
+    {
+        public int TotalTokens => TotalPromptTokens + TotalCompletionTokens;
+    }
 }

@@ -19,15 +19,18 @@ public class MemoriesController : ControllerBase
     private readonly IMediator _mediator;
     private readonly IEmbeddingService? _embeddingService;
     private readonly IVectorMemoryRepository? _vectorRepo;
+    private readonly ILogger<MemoriesController>? _logger;
 
     public MemoriesController(
         IMediator mediator,
         IEmbeddingService? embeddingService = null,
-        IVectorMemoryRepository? vectorRepo = null)
+        IVectorMemoryRepository? vectorRepo = null,
+        ILogger<MemoriesController>? logger = null)
     {
         _mediator = mediator;
         _embeddingService = embeddingService;
         _vectorRepo = vectorRepo;
+        _logger = logger;
     }
 
     private string GetCurrentUserId()
@@ -133,9 +136,14 @@ public class MemoriesController : ControllerBase
                 await _vectorRepo.UpsertAsync(memoryId, embedding.EmbeddingId, embedding.Vector, userId, ct);
                 await _mediator.Send(new MemoryIndexedCommand(memoryId, embedding.EmbeddingId, embedding.Provider), ct);
             }
-            catch
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                // Background worker fallback handles textual indexing
+                _logger?.LogInformation("Visual embedding generation cancelled for memory {MemoryId}.", memoryId);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to generate inline visual embedding for memory {MemoryId}. Falling back to background worker.", memoryId);
             }
         }
 

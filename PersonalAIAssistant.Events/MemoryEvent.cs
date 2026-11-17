@@ -10,4 +10,5 @@ public abstract class MemoryEvent
     public string? CorrelationId { get; set; }
     public string? CausationId { get; set; }
     public string? UserId { get; set; }
+    public string? Traceparent { get; set; }
 }

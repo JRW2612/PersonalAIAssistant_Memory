@@ -61,6 +61,8 @@ public sealed class PurgeUserMemoriesCommandHandler
         var purgedCount = 0;
         foreach (var memory in memories)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             try
             {
                 var streamId = $"memory-{memory.MemoryId}";
@@ -87,6 +89,11 @@ public sealed class PurgeUserMemoriesCommandHandler
 
                 await _vectorRepo.DeleteAsync(memory.MemoryId, cancellationToken);
                 purgedCount++;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning("[GDPR] Purge operation canceled for user {UserId}", request.TargetUserId);
+                throw;
             }
             catch (Exception ex)
             {

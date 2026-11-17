@@ -9,5 +9,10 @@ namespace PersonalAIAssistant.Memory.Core.Interfaces.AI
 
         /// <summary>Returns an aggregated usage summary for the given user since the specified timestamp.</summary>
         Task<AiUsageSummary> GetSummaryAsync(string userId, DateTimeOffset since, CancellationToken ct);
+
+        /// <summary>
+        /// Returns an aggregated usage summary for multiple users or workloads in a single batch query, eliminating N+1 roundtrips.
+        /// </summary>
+        Task<AiUsageSummary> GetBatchSummaryAsync(IEnumerable<string> userOrWorkloadIds, DateTimeOffset since, CancellationToken ct);
     }
 }

@@ -23,5 +23,20 @@ namespace PersonalAIAssistant.Memory.Core.Interfaces.Security
         /// provided dynamically when the user logs in to the AI application.
         /// </summary>
         string? GetApiKey(string providerName) => null;
+
+        /// <summary>
+        /// The current user action or operation initiating the request (e.g. "GetMemoriesByUser", "HTTP GET /api/memories").
+        /// </summary>
+        string? CurrentAction => null;
+
+        /// <summary>
+        /// Current distributed trace or correlation identifier for tracking queries back to incoming requests.
+        /// </summary>
+        string? CorrelationId => null;
+
+        /// <summary>
+        /// W3C traceparent header value (00-{trace_id}-{span_id}-{flags}) for distributed tracing.
+        /// </summary>
+        string? Traceparent => null;
     }
 }

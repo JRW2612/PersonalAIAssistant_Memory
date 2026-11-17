@@ -314,6 +314,7 @@ var app = builder.Build();
 
 // 6. Middleware Pipeline
 app.UseMiddleware<SecurityHeadersMiddleware>();
+app.UseMiddleware<TraceContextMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 if (app.Environment.IsDevelopment() || app.Environment.IsStaging())
@@ -349,8 +350,15 @@ app.MapGet("/health/outbox", async (IServiceProvider sp) =>
     {
         try
         {
-            var pending = await efDb.OutboxMessages.CountAsync(o => o.DispatchedAt == null);
-            var lastDispatched = await efDb.OutboxMessages.Where(o => o.DispatchedAt != null).OrderByDescending(o => o.DispatchedAt).Select(o => o.DispatchedAt).FirstOrDefaultAsync();
+            var pending = await efDb.OutboxMessages
+                .TagWith("UserAction: HealthEndpoint.OutboxPendingCount | User: system | Tenant: system")
+                .CountAsync(o => o.DispatchedAt == null);
+            var lastDispatched = await efDb.OutboxMessages
+                .TagWith("UserAction: HealthEndpoint.OutboxLastDispatched | User: system | Tenant: system")
+                .Where(o => o.DispatchedAt != null)
+                .OrderByDescending(o => o.DispatchedAt)
+                .Select(o => o.DispatchedAt)
+                .FirstOrDefaultAsync();
             result["ef"] = new { pending, lastDispatched };
         }
         catch (Exception ex)

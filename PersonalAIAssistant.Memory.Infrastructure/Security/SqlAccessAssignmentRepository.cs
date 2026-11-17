@@ -3,26 +3,35 @@ using PersonalAIAssistant.Memory.Core.Entities;
 using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using PersonalAIAssistant.Memory.Infrastructure.Context;
 using PersonalAIAssistant.Memory.Infrastructure.EF.Entities;
+using PersonalAIAssistant.Memory.Infrastructure.Extensions;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.Security;
 
 public class SqlAccessAssignmentRepository : IAccessAssignmentRepository
 {
     private readonly ReadModelDbContext _db;
+    private readonly IUserContext? _userContext;
 
-    public SqlAccessAssignmentRepository(ReadModelDbContext db)
+    public SqlAccessAssignmentRepository(ReadModelDbContext db, IUserContext? userContext = null)
     {
         _db = db;
+        _userContext = userContext;
     }
 
     public async Task<AccessAssignmentEntity?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
-        return await _db.AccessAssignments.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, ct);
+        return await _db.AccessAssignments
+            .TagWithUserAction(_userContext, "AccessAssignment.GetById")
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == id, ct);
     }
 
     public async Task<AccessAssignmentEntity?> GetByIdempotencyKeyAsync(string idempotencyKey, CancellationToken ct = default)
     {
-        return await _db.AccessAssignments.AsNoTracking().FirstOrDefaultAsync(a => a.IdempotencyKey == idempotencyKey, ct);
+        return await _db.AccessAssignments
+            .TagWithUserAction(_userContext, "AccessAssignment.GetByIdempotencyKey")
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.IdempotencyKey == idempotencyKey, ct);
     }
 
     public async Task<bool> CreateAssignmentWithOutboxAsync(
@@ -93,6 +102,7 @@ public class SqlAccessAssignmentRepository : IAccessAssignmentRepository
     {
         var cutoff = DateTime.UtcNow.Subtract(staleAge);
         return await _db.AccessAssignments
+            .TagWithUserAction(_userContext, "AccessAssignment.GetStaleOrInDoubt")
             .Where(a => a.Status == AssignmentStatus.RequiresReconciliation || 
                        (a.Status == AssignmentStatus.Provisioning && a.CreatedAtUtc < cutoff))
             .OrderBy(a => a.CreatedAtUtc)

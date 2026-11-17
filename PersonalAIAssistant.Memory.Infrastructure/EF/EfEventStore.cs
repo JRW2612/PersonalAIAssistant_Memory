@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using PersonalAIAssistant.Memory.Core.Exceptions;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
+using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using PersonalAIAssistant.Memory.Events;
 using PersonalAIAssistant.Memory.Infrastructure.EF.Entities;
+using PersonalAIAssistant.Memory.Infrastructure.Extensions;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.EF
 {
@@ -11,10 +13,12 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
         // EF-backed event store. Writes events and EF outbox messages together inside
         // a single database transaction so downstream message publishing can be reliable.
         private readonly EventStoreDbContext _db;
+        private readonly IUserContext? _userContext;
 
-        public EfEventStore(EventStoreDbContext db)
+        public EfEventStore(EventStoreDbContext db, IUserContext? userContext = null)
         {
             _db = db;
+            _userContext = userContext;
         }
 
         public async Task AppendEventAsync(string streamId, MemoryEvent memoryEvent, int expectedVersion, CancellationToken ct)
@@ -27,7 +31,11 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
             if (events == null || events.Count == 0) return;
 
             // Look up the current stream version so we can enforce optimistic concurrency.
-            var last = await _db.Events.Where(e => e.StreamId == streamId).OrderByDescending(e => e.Version).FirstOrDefaultAsync(ct);
+            var last = await _db.Events
+                .TagWithUserAction(_userContext, "EventStore.GetStreamVersionForAppend")
+                .Where(e => e.StreamId == streamId)
+                .OrderByDescending(e => e.Version)
+                .FirstOrDefaultAsync(ct);
             var currentVersion = last?.Version ?? 0;
             if (currentVersion != expectedVersion)
                 throw new ConcurrencyException($"Optimistic concurrency failure on stream '{streamId}': expected version {expectedVersion} but found {currentVersion}.");
@@ -66,7 +74,11 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
                 // Add the new events to the DB set. They will be saved when we call SaveChanges.
                 if (events != null && events.Count > 0)
                 {
-                    var last = await _db.Events.Where(e => e.StreamId == streamId).OrderByDescending(e => e.Version).FirstOrDefaultAsync(ct);
+                    var last = await _db.Events
+                        .TagWithUserAction(_userContext, "EventStore.GetStreamVersionForAppendWithOutbox")
+                        .Where(e => e.StreamId == streamId)
+                        .OrderByDescending(e => e.Version)
+                        .FirstOrDefaultAsync(ct);
                     var currentVersion = last?.Version ?? 0;
                     if (currentVersion != expectedVersion)
                         throw new ConcurrencyException($"Optimistic concurrency failure on stream '{streamId}': expected version {expectedVersion} but found {currentVersion}.");
@@ -122,47 +134,58 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
 
         public async Task<IReadOnlyList<MemoryEvent>> GetEventsAsync(string streamId, CancellationToken ct)
         {
-            var docs = await _db.Events.Where(e => e.StreamId == streamId).OrderBy(e => e.Version).ToListAsync(ct);
-            return docs.Select(d =>
-            {
-                var t = System.Text.Json.JsonSerializer.Deserialize(d.Payload, typeof(MemoryEvent), new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                if (t is MemoryEvent me)
-                {
-                    me.EventId = d.EventId;
-                    me.Version = d.Version;
-                    me.Timestamp = d.Timestamp;
-                    return me;
-                }
-                return null;
-            }).Where(x => x != null)!.Select(x => x!).ToList();
+            var docs = await _db.Events
+                .TagWithUserAction(_userContext, "EventStore.GetEvents")
+                .Where(e => e.StreamId == streamId)
+                .OrderBy(e => e.Version)
+                .ToListAsync(ct);
+            return docs.Select(DeserializeEvent).Where(x => x != null)!.Select(x => x!).ToList();
         }
 
         public async Task<IReadOnlyList<MemoryEvent>> GetEventsFromVersionAsync(string streamId, int fromVersion, CancellationToken ct)
         {
-            var docs = await _db.Events.Where(e => e.StreamId == streamId && e.Version > fromVersion).OrderBy(e => e.Version).ToListAsync(ct);
-            return docs.Select(d =>
+            var docs = await _db.Events
+                .TagWithUserAction(_userContext, "EventStore.GetEventsFromVersion")
+                .Where(e => e.StreamId == streamId && e.Version > fromVersion)
+                .OrderBy(e => e.Version)
+                .ToListAsync(ct);
+            return docs.Select(DeserializeEvent).Where(x => x != null)!.Select(x => x!).ToList();
+        }
+
+        private static MemoryEvent? DeserializeEvent(EventEntity d)
+        {
+            var eventType = typeof(MemoryEvent).Assembly.GetTypes().FirstOrDefault(t => t.Name == d.EventType);
+            if (eventType == null || eventType.IsAbstract) return null;
+            var t = System.Text.Json.JsonSerializer.Deserialize(d.Payload, eventType, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (t is MemoryEvent me)
             {
-                var t = System.Text.Json.JsonSerializer.Deserialize(d.Payload, typeof(MemoryEvent), new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                if (t is MemoryEvent me)
-                {
-                    me.EventId = d.EventId;
-                    me.Version = d.Version;
-                    me.Timestamp = d.Timestamp;
-                    return me;
-                }
-                return null;
-            }).Where(x => x != null)!.Select(x => x!).ToList();
+                me.EventId = d.EventId;
+                me.Version = d.Version;
+                me.Timestamp = d.Timestamp;
+                return me;
+            }
+            return null;
         }
 
         public async Task<int> GetCurrentVersionAsync(string streamId, CancellationToken ct)
         {
-            var last = await _db.Events.Where(e => e.StreamId == streamId).OrderByDescending(e => e.Version).FirstOrDefaultAsync(ct);
+            var last = await _db.Events
+                .TagWithUserAction(_userContext, "EventStore.GetCurrentVersion")
+                .Where(e => e.StreamId == streamId)
+                .OrderByDescending(e => e.Version)
+                .FirstOrDefaultAsync(ct);
             return last?.Version ?? 0;
         }
 
         public async Task<IReadOnlyList<(string StreamId, int CurrentVersion)>> GetStreamSummariesAsync(int limit, CancellationToken ct)
         {
-            var summaries = await _db.Events.GroupBy(e => e.StreamId).Select(g => new { StreamId = g.Key, CurrentVersion = g.Max(x => x.Version) }).OrderByDescending(x => x.CurrentVersion).Take(limit).ToListAsync(ct);
+            var summaries = await _db.Events
+                .TagWithUserAction(_userContext, "EventStore.GetStreamSummaries")
+                .GroupBy(e => e.StreamId)
+                .Select(g => new { StreamId = g.Key, CurrentVersion = g.Max(x => x.Version) })
+                .OrderByDescending(x => x.CurrentVersion)
+                .Take(limit)
+                .ToListAsync(ct);
             return summaries.Select(s => (s.StreamId, s.CurrentVersion)).ToList();
         }
     }

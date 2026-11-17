@@ -180,6 +180,10 @@ public class DiagnosticsController : ControllerBase
                     result = toolResult
                 });
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 return Ok(new

@@ -22,6 +22,8 @@ The API exposes an authenticated, stateless MCP endpoint at `/mcp`. Configure Co
 - `memory_search(query, topK?)` to retrieve relevant memories for the signed-in user.
 - `memory_save(content, source?)` to save a decision or fact for that user.
 
+When `AutomaticMemory:Enabled` is true, each appended **user** turn is sent to the configured AI provider for extraction of up to five directly evidenced facts. Assistant/system turns are not extracted. Extraction skips content flagged by sensitive-data sanitization, over-limit turns, ambiguous or negated evidence, and conflicting facts; conflicts are preserved for explicit review rather than silently superseded. Extracted facts are marked `AutomaticExtraction:ExplicitUserTurn` with confidence 0.9. Disable this behavior with `AutomaticMemory:Enabled=false`. The feature may add AI-provider latency and cost to user-turn ingestion.
+
 Authenticated agent clients can also inspect current temporal facts with `GET /api/v1/agenttools/facts` and the value history for a subject/predicate pair with `GET /api/v1/agenttools/facts/history?subject=Alice&predicate=works_at`. History responses retain confidence, source, and validity timestamps so clients can distinguish earlier assertions from current ones.
 
 Example Antigravity MCP server configuration:

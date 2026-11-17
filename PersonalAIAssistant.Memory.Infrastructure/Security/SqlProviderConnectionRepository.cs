@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using PersonalAIAssistant.Memory.Core.Entities;
 using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using PersonalAIAssistant.Memory.Infrastructure.Context;
+using PersonalAIAssistant.Memory.Infrastructure.Extensions;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.Security;
 
@@ -11,13 +12,25 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Security;
 public sealed class SqlProviderConnectionRepository : IProviderConnectionRepository
 {
     private readonly ReadModelDbContext _db;
-    public SqlProviderConnectionRepository(ReadModelDbContext db) => _db = db;
+    private readonly IUserContext? _userContext;
+
+    public SqlProviderConnectionRepository(ReadModelDbContext db, IUserContext? userContext = null)
+    {
+        _db = db;
+        _userContext = userContext;
+    }
 
     public Task<ProviderConnectionEntity?> GetConnectionAsync(string userId, string provider, CancellationToken ct = default) =>
-        _db.ProviderConnections.SingleOrDefaultAsync(c => c.UserId == userId && c.Provider == Normalize(provider), ct);
+        _db.ProviderConnections
+            .TagWithUserAction(_userContext, "ProviderConnection.GetConnection")
+            .SingleOrDefaultAsync(c => c.UserId == userId && c.Provider == Normalize(provider), ct);
 
     public async Task<IReadOnlyList<ProviderConnectionEntity>> GetUserConnectionsAsync(string userId, CancellationToken ct = default) =>
-        await _db.ProviderConnections.Where(c => c.UserId == userId).OrderBy(c => c.Provider).ToListAsync(ct);
+        await _db.ProviderConnections
+            .TagWithUserAction(_userContext, "ProviderConnection.GetUserConnections")
+            .Where(c => c.UserId == userId)
+            .OrderBy(c => c.Provider)
+            .ToListAsync(ct);
 
     public async Task UpsertConnectionAsync(ProviderConnectionEntity connection, CancellationToken ct = default)
     {
@@ -64,6 +77,7 @@ public sealed class SqlProviderConnectionRepository : IProviderConnectionReposit
     public async Task AddAuditLogAsync(ProviderAuditLogEntity auditLog, CancellationToken ct = default)
     {
         var priorHash = await _db.ProviderAuditLogs
+            .TagWithUserAction(_userContext, "ProviderAuditLog.GetPriorHash")
             .Where(x => x.UserId == auditLog.UserId && x.Provider == Normalize(auditLog.Provider))
             .OrderByDescending(x => x.TimestampUtc)
             .Select(x => x.EntryHash)
@@ -78,7 +92,9 @@ public sealed class SqlProviderConnectionRepository : IProviderConnectionReposit
 
     public async Task<IReadOnlyList<ProviderAuditLogEntity>> GetAuditLogsAsync(string userId, string? provider = null, int limit = 50, CancellationToken ct = default)
     {
-        var query = _db.ProviderAuditLogs.Where(x => x.UserId == userId);
+        var query = _db.ProviderAuditLogs
+            .TagWithUserAction(_userContext, "ProviderAuditLog.GetAuditLogs")
+            .Where(x => x.UserId == userId);
         if (!string.IsNullOrWhiteSpace(provider)) query = query.Where(x => x.Provider == Normalize(provider));
         return await query.OrderByDescending(x => x.TimestampUtc).Take(Math.Clamp(limit, 1, 200)).ToListAsync(ct);
     }

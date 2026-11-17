@@ -36,9 +36,33 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             string mongoConnectionString,
             string mongoDatabaseName = "PersonalAIAssistantMemory")
         {
-            // Register EF Core Read Model DbContext & EventStoreDbContext
-            services.AddDbContext<ReadModelDbContext>(configureDbContext);
-            services.AddDbContext<PersonalAIAssistant.Memory.Infrastructure.EF.EventStoreDbContext>(configureDbContext);
+            // Register Request Timing & 504 Triage services
+            services.AddScoped<PersonalAIAssistant.Memory.Core.Diagnostics.IRequestTimingContext, PersonalAIAssistant.Memory.Core.Diagnostics.RequestTimingContext>();
+            services.AddSingleton<PersonalAIAssistant.Memory.Core.Diagnostics.ITriage504Classifier, PersonalAIAssistant.Memory.Core.Diagnostics.Triage504Classifier>();
+
+            // Register EF Core Query Tagging & Interceptor
+            services.AddScoped<IDbQueryTagger, DbQueryTagger>();
+            services.AddScoped<UserActionQueryTaggingInterceptor>();
+
+            // Register EF Core Read Model DbContext & EventStoreDbContext with UserActionQueryTaggingInterceptor
+            services.AddDbContext<ReadModelDbContext>((sp, options) =>
+            {
+                configureDbContext(options);
+                var interceptor = sp.GetService<UserActionQueryTaggingInterceptor>();
+                if (interceptor != null)
+                {
+                    options.AddInterceptors(interceptor);
+                }
+            });
+            services.AddDbContext<PersonalAIAssistant.Memory.Infrastructure.EF.EventStoreDbContext>((sp, options) =>
+            {
+                configureDbContext(options);
+                var interceptor = sp.GetService<UserActionQueryTaggingInterceptor>();
+                if (interceptor != null)
+                {
+                    options.AddInterceptors(interceptor);
+                }
+            });
             services.AddScoped<SqlReadModelRepository>();
             services.AddScoped<IReadModelRepository>(sp => sp.GetRequiredService<SqlReadModelRepository>());
             services.AddScoped<IEventIdempotencyStore>(sp => sp.GetRequiredService<SqlReadModelRepository>());
@@ -93,6 +117,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.Configure<AiProviderOptions>(configuration.GetSection(AiProviderOptions.SectionName));
             services.Configure<AiGatewayOptions>(configuration.GetSection(AiGatewayOptions.SectionName));
             services.Configure<MemoryIngestionOptions>(configuration.GetSection(MemoryIngestionOptions.SectionName));
+            services.Configure<AutomaticMemoryOptions>(configuration.GetSection(AutomaticMemoryOptions.SectionName));
             services.Configure<AiGovernanceOptions>(configuration.GetSection(AiGovernanceOptions.SectionName));
             services.AddSingleton<IAiGovernanceValidator, CorporateAiGovernanceValidator>();
             services.Configure<OpenAiOptions>(configuration.GetSection(OpenAiOptions.SectionName));

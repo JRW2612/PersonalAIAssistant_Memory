@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PersonalAIAssistant.Memory.Api.DTOs;
 using PersonalAIAssistant.Memory.Core.Entities;
@@ -9,6 +10,7 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
 {
     [ApiController]
     [Route("api/v1/connections")]
+    [Authorize]
     public class ProviderConnectionsController : ControllerBase
     {
         private readonly IProviderConnectionRepository _repo;
@@ -43,12 +45,18 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
         private string ResolveUserId()
         {
             if (!string.IsNullOrWhiteSpace(_userContext.UserId))
+            {
+                // Only trusted administrators may act on behalf of another user identity via X-User-Id header
+                if (_userContext.IsAdmin && Request.Headers.TryGetValue("X-User-Id", out var customUser) && !string.IsNullOrWhiteSpace(customUser))
+                {
+                    return customUser.ToString();
+                }
+
                 return _userContext.UserId;
+            }
 
-            if (Request.Headers.TryGetValue("X-User-Id", out var customUser) && !string.IsNullOrWhiteSpace(customUser))
-                return customUser.ToString();
-
-            return "user-alice"; // Default fallback identity for demo/testing
+            // Defend against IDOR / BOLA: Never fall back to unverified client headers or hardcoded dummy identities
+            throw new UnauthorizedAccessException("Authenticated user identity could not be verified from token.");
         }
 
         private string ResolveTenantId()
@@ -252,6 +260,10 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
 
                 return Redirect($"/connections?status=connected&provider={provider.ToLowerInvariant()}");
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[OAuth Callback] Error exchanging code for provider '{Provider}'.", provider);
@@ -354,6 +366,10 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
                         var plainToken = _tokenService.DecryptToken(existing.EncryptedAccessToken);
                         await handler.RevokeTokenAsync(plainToken, ct);
                     }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                    {
+                        throw;
+                    }
                     catch (Exception ex)
                     {
                         _logger.LogWarning(ex, "[Revoke] Remote token revocation failed for provider '{Provider}'.", provider);
@@ -437,6 +453,11 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
                     Message: $"Live connectivity confirmed! Provider response: {pingResponse.Trim()}",
                     ResponseTimeMs: (int)sw.ElapsedMilliseconds
                 ));
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                sw.Stop();
+                throw;
             }
             catch (Exception ex)
             {

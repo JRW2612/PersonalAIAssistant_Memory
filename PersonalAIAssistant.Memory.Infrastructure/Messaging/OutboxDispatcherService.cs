@@ -64,7 +64,15 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Messaging
                                 continue;
                             }
 
-                            await _publishEndpoint.Publish((object)evt, stoppingToken);
+                            if (string.IsNullOrEmpty(evt.Traceparent))
+                            {
+                                evt.Traceparent = PersonalAIAssistant.Memory.Core.Observability.W3CTraceContext.Create().ToString();
+                            }
+
+                            await _publishEndpoint.Publish((object)evt, sendContext =>
+                            {
+                                sendContext.Headers.Set(PersonalAIAssistant.Memory.Core.Observability.W3CTraceContext.HeaderName, evt.Traceparent);
+                            }, stoppingToken);
 
                             // Mark the message as dispatched and bump the attempt counter.
                             var dispatchedUpdate = Builders<PersonalAIAssistant.Memory.Infrastructure.Mongo.OutboxDocument>.Update

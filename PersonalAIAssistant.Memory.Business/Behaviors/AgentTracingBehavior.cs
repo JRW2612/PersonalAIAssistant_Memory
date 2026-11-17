@@ -116,6 +116,10 @@ public sealed class AgentTracingBehavior<TRequest, TResponse>
             {
                 await _traces.AddAsync(trace, cancellationToken);
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (Exception persistEx)
             {
                 _logger.LogError(persistEx, "Failed to persist agent trace for {RequestName}", requestName);
@@ -154,9 +158,13 @@ public sealed class AgentTracingBehavior<TRequest, TResponse>
             var json = JsonSerializer.Serialize(obj, SafeJson);
             return json.Length > maxBytes ? json[..maxBytes] + "…" : json;
         }
-        catch
+        catch (NotSupportedException ex)
         {
-            return null;
+            return $"[Unserializable: {obj.GetType().Name} - {ex.Message}]";
+        }
+        catch (JsonException ex)
+        {
+            return $"[SerializationError: {obj.GetType().Name} - {ex.Message}]";
         }
     }
 }

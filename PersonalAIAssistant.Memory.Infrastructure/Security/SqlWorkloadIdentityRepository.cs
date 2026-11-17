@@ -2,16 +2,19 @@ using Microsoft.EntityFrameworkCore;
 using PersonalAIAssistant.Memory.Core.Entities;
 using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using PersonalAIAssistant.Memory.Infrastructure.Context;
+using PersonalAIAssistant.Memory.Infrastructure.Extensions;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.Security
 {
     public class SqlWorkloadIdentityRepository : IWorkloadIdentityRepository
     {
         private readonly ReadModelDbContext _db;
+        private readonly IUserContext? _userContext;
 
-        public SqlWorkloadIdentityRepository(ReadModelDbContext db)
+        public SqlWorkloadIdentityRepository(ReadModelDbContext db, IUserContext? userContext = null)
         {
             _db = db;
+            _userContext = userContext;
         }
 
         public async Task<WorkloadIdentityEntity?> GetByClientIdAsync(string clientId, CancellationToken ct = default)
@@ -20,6 +23,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Security
 
             var normalized = clientId.Trim().ToLowerInvariant();
             return await _db.WorkloadIdentities
+                .TagWithUserAction(_userContext, "WorkloadIdentity.GetByClientId")
                 .AsNoTracking()
                 .FirstOrDefaultAsync(w => w.ClientId.ToLower() == normalized, ct);
         }
@@ -29,6 +33,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Security
             if (string.IsNullOrWhiteSpace(tenantId)) return Array.Empty<WorkloadIdentityEntity>();
 
             return await _db.WorkloadIdentities
+                .TagWithUserAction(_userContext, "WorkloadIdentity.GetByTenantId")
                 .AsNoTracking()
                 .Where(w => w.TenantId == tenantId)
                 .OrderBy(w => w.CloudPlatform)
@@ -46,6 +51,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Security
 
             // Fetch candidate active OIDC workloads
             var candidates = await _db.WorkloadIdentities
+                .TagWithUserAction(_userContext, "WorkloadIdentity.FindMatchingOidc")
                 .Where(w => w.Status == WorkloadStatus.Active && w.AuthType == WorkloadAuthType.OidcWorkloadIdentity)
                 .ToListAsync(ct);
 
@@ -80,6 +86,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Security
 
             entity.ClientId = entity.ClientId.Trim().ToLowerInvariant();
             var existing = await _db.WorkloadIdentities
+                .TagWithUserAction(_userContext, "WorkloadIdentity.FindForUpsert")
                 .FirstOrDefaultAsync(w => w.ClientId.ToLower() == entity.ClientId, ct);
 
             if (existing != null)
@@ -111,6 +118,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Security
         {
             var normalized = clientId.Trim().ToLowerInvariant();
             var existing = await _db.WorkloadIdentities
+                .TagWithUserAction(_userContext, "WorkloadIdentity.FindForRecordUsage")
                 .FirstOrDefaultAsync(w => w.ClientId.ToLower() == normalized, ct);
 
             if (existing != null)
@@ -124,6 +132,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Security
         {
             var normalized = clientId.Trim().ToLowerInvariant();
             var existing = await _db.WorkloadIdentities
+                .TagWithUserAction(_userContext, "WorkloadIdentity.FindForRevoke")
                 .FirstOrDefaultAsync(w => w.ClientId.ToLower() == normalized, ct);
 
             if (existing != null)

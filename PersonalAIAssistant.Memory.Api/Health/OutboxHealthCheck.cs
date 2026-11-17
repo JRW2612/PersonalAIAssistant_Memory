@@ -28,6 +28,7 @@ public class OutboxHealthCheck : IHealthCheck
         try
         {
             var pendingStats = await db.OutboxMessages
+                .TagWith("UserAction: OutboxHealthCheck.GetPendingStats | User: system | Tenant: system")
                 .Where(m => m.DispatchedAt == null)
                 .GroupBy(_ => 1)
                 .Select(g => new

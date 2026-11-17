@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using PersonalAIAssistant.Memory.Api.DTOs;
 using PersonalAIAssistant.Memory.Api.Security;
 using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using PersonalAIAssistant.Memory.Core.Models;
@@ -28,9 +29,10 @@ public class EmployeesController : ControllerBase
     /// <summary>
     /// Retrieves all employee records scoped strictly to the authenticated caller's tenant.
     /// Trusted Tenant Identity: Tenant ID is extracted exclusively from validated claims, never from client parameters.
+    /// Prevents over-exposure by mapping internal entities to EmployeeResponseDto and suppressing sensitive fields.
     /// </summary>
     [HttpGet]
-    [ProducesResponseType(typeof(IEnumerable<EmployeeRecord>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(IEnumerable<EmployeeResponseDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAll(CancellationToken ct)
     {
         var callerTenantId = User.FindFirstValue("tid")
@@ -38,15 +40,20 @@ public class EmployeesController : ControllerBase
                           ?? User.FindFirstValue("tenantid")
                           ?? "default";
 
+        var isHrOrAdmin = User.IsInRole("Admin") || User.IsInRole("HR") || User.IsInRole("Payroll");
+        var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
+
         var records = await _repository.GetByTenantAsync(callerTenantId, ct);
-        return Ok(records);
+        var dtos = records.Select(r => ToDto(r, isHrOrAdmin, currentUserId)).ToList();
+        return Ok(dtos);
     }
 
     /// <summary>
     /// Gets an employee record by ID with server-side resource-based authorization.
+    /// Maps to EmployeeResponseDto, masking SSN and hiding salary for unauthorized viewers.
     /// </summary>
     [HttpGet("{id:guid}")]
-    [ProducesResponseType(typeof(EmployeeRecord), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(EmployeeResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
@@ -63,7 +70,10 @@ public class EmployeesController : ControllerBase
             return Forbid();
         }
 
-        return Ok(record);
+        var isHrOrAdmin = User.IsInRole("Admin") || User.IsInRole("HR") || User.IsInRole("Payroll");
+        var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
+
+        return Ok(ToDto(record, isHrOrAdmin, currentUserId));
     }
 
     /// <summary>
@@ -124,5 +134,47 @@ public class EmployeesController : ControllerBase
 
         await _repository.DeleteAsync(id, ct);
         return NoContent();
+    }
+
+    private static EmployeeResponseDto ToDto(EmployeeRecord record, bool isHrOrAdmin, string? currentUserId)
+    {
+        var isSelf = !string.IsNullOrEmpty(currentUserId) && string.Equals(record.UserId, currentUserId, StringComparison.OrdinalIgnoreCase);
+
+        decimal? salary = (isHrOrAdmin || isSelf) ? record.Salary : null;
+        string? ssn;
+        if (isHrOrAdmin)
+        {
+            ssn = record.SocialSecurityNumber;
+        }
+        else if (isSelf && !string.IsNullOrWhiteSpace(record.SocialSecurityNumber))
+        {
+            ssn = MaskSsn(record.SocialSecurityNumber);
+        }
+        else
+        {
+            ssn = null;
+        }
+
+        return new EmployeeResponseDto(
+            record.Id,
+            record.UserId,
+            record.TenantId,
+            record.FullName,
+            record.Department,
+            salary,
+            ssn
+        );
+    }
+
+    private static string MaskSsn(string ssn)
+    {
+        if (string.IsNullOrWhiteSpace(ssn)) return string.Empty;
+        var digitsOnly = ssn.Replace("-", "").Trim();
+        if (digitsOnly.Length >= 4)
+        {
+            var last4 = digitsOnly[^4..];
+            return $"***-**-{last4}";
+        }
+        return "***-**-****";
     }
 }

@@ -88,6 +88,7 @@ public static class BusinessServiceExtensions
 
         // Session Context Assembler Service
         services.AddScoped<ISessionContextBuilder, SessionContextBuilder>();
+        services.AddScoped<IAutomaticMemoryFormationService, AutomaticMemoryFormationService>();
         services.AddScoped<IAgentToolService, AgentToolService>();
 
         // Worker options and background services

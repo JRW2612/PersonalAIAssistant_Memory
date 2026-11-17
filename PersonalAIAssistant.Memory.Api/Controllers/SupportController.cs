@@ -67,27 +67,14 @@ public class SupportController : ControllerBase
         var sinceTimestamp = ParseTimeSpanOrTimestamp(since, TimeSpan.FromDays(7));
         var workloads = await _workloadRepo.GetByTenantIdAsync(tenantId, ct);
 
-        // Aggregate AI metrics across all workload identities associated with this tenant
-        int totalPromptTokens = 0;
-        int totalCompletionTokens = 0;
-        double totalCostUsd = 0;
-        int totalCalls = 0;
+        // N+1 Query Defense: Batch aggregate AI metrics across all workload identities and tenant ID in a single query
+        var identityIds = workloads
+            .Select(w => w.ClientId)
+            .Append(tenantId)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        foreach (var w in workloads)
-        {
-            var summary = await _aiMetrics.GetSummaryAsync(w.ClientId, sinceTimestamp, ct);
-            totalPromptTokens += summary.TotalPromptTokens;
-            totalCompletionTokens += summary.TotalCompletionTokens;
-            totalCostUsd += summary.TotalEstimatedCostUsd;
-            totalCalls += summary.CallCount;
-        }
-
-        // Also check primary tenant ID usage
-        var tenantSummary = await _aiMetrics.GetSummaryAsync(tenantId, sinceTimestamp, ct);
-        totalPromptTokens += tenantSummary.TotalPromptTokens;
-        totalCompletionTokens += tenantSummary.TotalCompletionTokens;
-        totalCostUsd += tenantSummary.TotalEstimatedCostUsd;
-        totalCalls += tenantSummary.CallCount;
+        var summary = await _aiMetrics.GetBatchSummaryAsync(identityIds, sinceTimestamp, ct);
 
         var memoryCount = await _readRepo.GetMemoryCountByUserAsync(tenantId, ct);
 
@@ -100,11 +87,11 @@ public class SupportController : ControllerBase
             memoryCount,
             usage = new
             {
-                totalCalls,
-                totalPromptTokens,
-                totalCompletionTokens,
-                totalTokens = totalPromptTokens + totalCompletionTokens,
-                estimatedCostUsd = totalCostUsd
+                totalCalls = summary.CallCount,
+                totalPromptTokens = summary.TotalPromptTokens,
+                totalCompletionTokens = summary.TotalCompletionTokens,
+                totalTokens = summary.TotalTokens,
+                estimatedCostUsd = summary.TotalEstimatedCostUsd
             }
         });
     }
@@ -137,12 +124,19 @@ public class SupportController : ControllerBase
             {
                 try
                 {
-                    efOutboxPending = await efDb.OutboxMessages.CountAsync(o => o.DispatchedAt == null, ct);
+                    efOutboxPending = await efDb.OutboxMessages
+                        .TagWith($"UserAction: Support.GetOutboxPendingCount | User: {_userContext.UserId} | Tenant: {tenantId}")
+                        .CountAsync(o => o.DispatchedAt == null, ct);
                     lastDispatchedUtc = await efDb.OutboxMessages
+                        .TagWith($"UserAction: Support.GetOutboxLastDispatched | User: {_userContext.UserId} | Tenant: {tenantId}")
                         .Where(o => o.DispatchedAt != null)
                         .OrderByDescending(o => o.DispatchedAt)
                         .Select(o => o.DispatchedAt)
                         .FirstOrDefaultAsync(ct);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
                 }
                 catch (Exception ex)
                 {

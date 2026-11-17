@@ -19,11 +19,13 @@ public sealed class McpController : ControllerBase
 {
     private readonly IMediator _mediator;
     private readonly IUserContext _user;
+    private readonly ILogger<McpController>? _logger;
 
-    public McpController(IMediator mediator, IUserContext user)
+    public McpController(IMediator mediator, IUserContext user, ILogger<McpController>? logger = null)
     {
         _mediator = mediator;
         _user = user;
+        _logger = logger;
     }
 
     [HttpPost]
@@ -54,12 +56,18 @@ public sealed class McpController : ControllerBase
                 _ => Ok(RpcError(id, -32601, $"Method not found: {method}"))
             };
         }
-        catch (JsonException)
+        catch (JsonException ex)
         {
+            _logger?.LogWarning(ex, "Invalid MCP JSON-RPC tool arguments.");
             return Ok(RpcError(id, -32602, "Invalid tool arguments."));
         }
-        catch (Exception)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "MCP operation failed for method '{Method}'.", method);
             // Do not expose exception messages, provider responses, or stored content via MCP errors.
             return Ok(RpcError(id, -32603, "The memory operation failed."));
         }

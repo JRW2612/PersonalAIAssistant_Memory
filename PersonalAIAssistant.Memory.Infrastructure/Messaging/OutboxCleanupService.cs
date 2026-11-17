@@ -41,7 +41,10 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Messaging
                             var efDb = scope.ServiceProvider.GetService(typeof(EventStoreDbContext)) as EventStoreDbContext;
                             if (efDb != null)
                             {
-                                var old = await efDb.OutboxMessages.Where(o => o.DispatchedAt != null && o.DispatchedAt < cutoff).ToListAsync(stoppingToken);
+                                var old = await efDb.OutboxMessages
+                                    .TagWith("UserAction: OutboxCleanupService.GetStaleDispatchedMessages | User: system | Tenant: system")
+                                    .Where(o => o.DispatchedAt != null && o.DispatchedAt < cutoff)
+                                    .ToListAsync(stoppingToken);
                                 if (old.Count > 0)
                                 {
                                     efDb.OutboxMessages.RemoveRange(old);

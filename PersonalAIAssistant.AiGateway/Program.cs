@@ -1,10 +1,13 @@
-using Microsoft.AspNetCore.RateLimiting;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
+using PersonalAIAssistant.Memory.Core.Diagnostics;
+using PersonalAIAssistant.Memory.Core.Observability;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.AddJsonConsole();
@@ -52,12 +55,54 @@ app.UseRateLimiter();
 app.MapPost("/v1/{provider}/{**path}", async (string provider, string path, HttpContext context, IHttpClientFactory clients, ILoggerFactory loggerFactory, CancellationToken ct) =>
 {
     var logger = loggerFactory.CreateLogger("AiGatewayAudit");
+
+    // 1. Resolve or generate W3C traceparent header
+    var rawTraceparent = context.Request.Headers[W3CTraceContext.HeaderName].FirstOrDefault();
+    var traceContext = W3CTraceContext.GetOrCreate(rawTraceparent);
+    context.Response.Headers[W3CTraceContext.HeaderName] = traceContext.ToString();
+
     var route = ProviderRoute.TryCreate(provider, path, app.Configuration);
     if (route is null) return Results.NotFound(new { error = "provider_or_path_not_allowed" });
 
     if (context.Request.ContentLength is > 1_048_576) return Results.BadRequest(new { error = "payload_too_large" });
-    using var reader = new StreamReader(context.Request.Body, Encoding.UTF8, leaveOpen: false);
-    var originalPayload = await reader.ReadToEndAsync(ct);
+
+    // 2. Measure Hop 1 (Client-to-Gateway) reading request payload
+    var c2gWatch = Stopwatch.StartNew();
+    string originalPayload;
+    try
+    {
+        using var reader = new StreamReader(context.Request.Body, Encoding.UTF8, leaveOpen: false);
+        originalPayload = await reader.ReadToEndAsync(ct);
+    }
+    catch (Exception ex) when (ex is OperationCanceledException or BadHttpRequestException or IOException)
+    {
+        c2gWatch.Stop();
+        var isAbort = context.RequestAborted.IsCancellationRequested;
+        var reason = isAbort ? TimeoutReason.ClientNetworkAbort : TimeoutReason.SlowClientUpload;
+        var metrics = new HopTimingMetrics(c2gWatch.Elapsed.TotalMilliseconds, null, null, c2gWatch.Elapsed.TotalMilliseconds);
+
+        context.Response.Headers["X-Timeout-Phase"] = TimeoutHop.ClientToGateway.ToString();
+        context.Response.Headers["X-Timeout-Reason"] = reason.ToString();
+        context.Response.Headers["Server-Timing"] = metrics.ToServerTimingHeader();
+
+        logger.LogWarning(ex, "Client-to-Gateway timeout/abort: Phase=ClientToGateway Reason={Reason} traceparent={Traceparent}",
+            reason, traceContext.ToString());
+
+        return Results.Json(new Triage504ProblemDetails
+        {
+            Status = StatusCodes.Status504GatewayTimeout,
+            Title = "Gateway Timeout",
+            Detail = isAbort ? "Client aborted request stream before gateway could proxy upstream." : "Client request body upload timed out or stalled.",
+            Traceparent = traceContext.ToString(),
+            TimeoutPhase = TimeoutHop.ClientToGateway.ToString(),
+            TimeoutReason = reason.ToString(),
+            HopMetrics = metrics,
+            Diagnostics = new TriageDiagnosticsInfo(null, null, "Ensure client connection is kept alive and payload streaming is uninterrupted.", null)
+        }, statusCode: StatusCodes.Status504GatewayTimeout, contentType: "application/problem+json");
+    }
+    c2gWatch.Stop();
+    var c2gMs = c2gWatch.Elapsed.TotalMilliseconds;
+
     var safePayload = SensitiveDataRedactor.RedactJson(originalPayload);
     var promptHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(originalPayload)));
     var toolCount = CountRequestedTools(safePayload);
@@ -65,25 +110,103 @@ app.MapPost("/v1/{provider}/{**path}", async (string provider, string path, Http
     var model = context.Request.Headers["X-AI-Model"].FirstOrDefault() ?? "unspecified";
     var operation = context.Request.Headers["X-AI-Operation"].FirstOrDefault() ?? "generate";
 
+    // 3. Prepare outbound HTTP request message with W3C traceparent and telemetry headers
     using var outbound = new HttpRequestMessage(HttpMethod.Post, route.Target)
     {
         Content = new StringContent(safePayload, Encoding.UTF8, context.Request.ContentType ?? "application/json")
     };
     route.ApplyCredentials(outbound, context.Request);
+
+    // Forward standard and trace headers
+    outbound.Headers.TryAddWithoutValidation(W3CTraceContext.HeaderName, traceContext.ToString());
+    outbound.Headers.TryAddWithoutValidation("X-Client-Duration-Ms", c2gMs.ToString("F1", System.Globalization.CultureInfo.InvariantCulture));
+
     foreach (var header in context.Request.Headers.Where(h => h.Key is "Accept" or "X-Request-Id"))
         outbound.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
 
+    // 4. Measure Hop 2 (Gateway-to-Service) with proxy timeout budget
+    var proxyTimeoutSec = app.Configuration.GetValue("Gateway:ProxyTimeoutSeconds", 30);
+    using var proxyCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+    proxyCts.CancelAfter(TimeSpan.FromSeconds(proxyTimeoutSec));
+
+    var g2sWatch = Stopwatch.StartNew();
     try
     {
-        using var response = await clients.CreateClient("upstream").SendAsync(outbound, HttpCompletionOption.ResponseHeadersRead, ct);
+        using var response = await clients.CreateClient("upstream").SendAsync(outbound, HttpCompletionOption.ResponseHeadersRead, proxyCts.Token);
+        g2sWatch.Stop();
+        var g2sMs = g2sWatch.Elapsed.TotalMilliseconds;
+        var totalMs = c2gMs + g2sMs;
+
         var body = await response.Content.ReadAsStringAsync(ct);
-        // Store an output fingerprint rather than output content. This preserves forensic linkage
-        // without copying potentially sensitive model output into the audit stream.
         var outputHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(body)));
-        logger.LogInformation("AI gateway audit {@Audit}", new { userId, promptHash, provider, model, operation, status = (int)response.StatusCode, toolCalls = toolCount, reasoningSteps = 0, outputHash, outputLength = body.Length });
+        logger.LogInformation("AI gateway audit {@Audit}", new { userId, promptHash, provider, model, operation, status = (int)response.StatusCode, toolCalls = toolCount, reasoningSteps = 0, outputHash, outputLength = body.Length, c2gMs, g2sMs, traceparent = traceContext.ToString() });
+
+        // Forward diagnostic headers if present (e.g. from upstream ServiceToDatabase triage)
+        if (response.Headers.TryGetValues("X-Timeout-Phase", out var upstreamPhase))
+            context.Response.Headers["X-Timeout-Phase"] = upstreamPhase.ToArray();
+        if (response.Headers.TryGetValues("X-Timeout-Reason", out var upstreamReason))
+            context.Response.Headers["X-Timeout-Reason"] = upstreamReason.ToArray();
+
+        var hopMetrics = new HopTimingMetrics(c2gMs, g2sMs, null, totalMs);
+        context.Response.Headers["Server-Timing"] = hopMetrics.ToServerTimingHeader();
+
         return Results.Content(body, response.Content.Headers.ContentType?.ToString() ?? "application/json", statusCode: (int)response.StatusCode);
     }
-    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+    {
+        // Client cancelled while waiting for upstream response
+        g2sWatch.Stop();
+        var g2sMs = g2sWatch.Elapsed.TotalMilliseconds;
+        var metrics = new HopTimingMetrics(c2gMs, g2sMs, null, c2gMs + g2sMs);
+        context.Response.Headers["X-Timeout-Phase"] = TimeoutHop.ClientToGateway.ToString();
+        context.Response.Headers["X-Timeout-Reason"] = TimeoutReason.ClientNetworkAbort.ToString();
+        context.Response.Headers["Server-Timing"] = metrics.ToServerTimingHeader();
+
+        logger.LogWarning("Client aborted while waiting for upstream: Phase=ClientToGateway Reason=ClientNetworkAbort traceparent={Traceparent}",
+            traceContext.ToString());
+
+        return Results.Json(new Triage504ProblemDetails
+        {
+            Status = StatusCodes.Status504GatewayTimeout,
+            Title = "Gateway Timeout",
+            Detail = "Client aborted connection while gateway was waiting for upstream response.",
+            Traceparent = traceContext.ToString(),
+            TimeoutPhase = TimeoutHop.ClientToGateway.ToString(),
+            TimeoutReason = TimeoutReason.ClientNetworkAbort.ToString(),
+            HopMetrics = metrics,
+            Diagnostics = new TriageDiagnosticsInfo(null, null, "Check client timeout thresholds against gateway SLA.", null)
+        }, statusCode: StatusCodes.Status504GatewayTimeout, contentType: "application/problem+json");
+    }
+    catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or TaskCanceledException)
+    {
+        // Upstream service timed out
+        g2sWatch.Stop();
+        var g2sMs = g2sWatch.Elapsed.TotalMilliseconds;
+        var metrics = new HopTimingMetrics(c2gMs, g2sMs, null, c2gMs + g2sMs);
+
+        var classifier = new Triage504Classifier();
+        var triage = classifier.Classify(ex, metrics, null, null, false);
+
+        context.Response.Headers["X-Timeout-Phase"] = triage.Hop.ToString();
+        context.Response.Headers["X-Timeout-Reason"] = triage.Reason.ToString();
+        context.Response.Headers["Server-Timing"] = metrics.ToServerTimingHeader();
+
+        logger.LogWarning("AI gateway upstream proxy timeout: Phase={Phase} Reason={Reason} g2sMs={G2sMs} traceparent={Traceparent}",
+            triage.Hop, triage.Reason, g2sMs, traceContext.ToString());
+
+        return Results.Json(new Triage504ProblemDetails
+        {
+            Status = StatusCodes.Status504GatewayTimeout,
+            Title = "Gateway Timeout",
+            Detail = $"Upstream service failed to respond within proxy timeout SLA of {proxyTimeoutSec} seconds.",
+            Traceparent = traceContext.ToString(),
+            TimeoutPhase = triage.Hop.ToString(),
+            TimeoutReason = triage.Reason.ToString(),
+            HopMetrics = metrics,
+            Diagnostics = new TriageDiagnosticsInfo(null, null, triage.Remediation, null)
+        }, statusCode: StatusCodes.Status504GatewayTimeout, contentType: "application/problem+json");
+    }
+    catch (HttpRequestException ex)
     {
         logger.LogWarning("AI gateway audit {@Audit}", new { userId, promptHash, provider, model, operation, status = 502, toolCalls = toolCount, error = ex.GetType().Name });
         return Results.Problem(statusCode: StatusCodes.Status502BadGateway, title: "AI provider request failed");

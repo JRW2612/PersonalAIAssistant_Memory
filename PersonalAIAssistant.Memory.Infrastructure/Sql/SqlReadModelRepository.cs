@@ -4,11 +4,13 @@ using PersonalAIAssistant.Memory.Core.Interfaces.Persistence;
 using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using PersonalAIAssistant.Memory.Core.Models;
 using PersonalAIAssistant.Memory.Infrastructure.Context;
+using PersonalAIAssistant.Memory.Infrastructure.Extensions;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.Sql
 {
     /// <summary>
     /// Implements segregated persistence contracts for SQL read models, idempotency, locks, and retention queries.
+    /// Uses EF Core .TagWith() to tag queries with the initiating user action and identity.
     /// </summary>
     public class SqlReadModelRepository :
         IReadModelRepository,
@@ -21,15 +23,18 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Sql
         private readonly ReadModelDbContext _db;
         private readonly IEncryptionService _encryptionService;
         private readonly Microsoft.Extensions.Options.IOptions<PersonalAIAssistant.Memory.Core.Models.EncryptionOptions> _encryptOptions;
+        private readonly IUserContext? _userContext;
 
         public SqlReadModelRepository(
             ReadModelDbContext db,
             IEncryptionService encryptionService,
-            Microsoft.Extensions.Options.IOptions<PersonalAIAssistant.Memory.Core.Models.EncryptionOptions> encryptOptions)
+            Microsoft.Extensions.Options.IOptions<PersonalAIAssistant.Memory.Core.Models.EncryptionOptions> encryptOptions,
+            IUserContext? userContext = null)
         {
             _db = db;
             _encryptionService = encryptionService;
             _encryptOptions = encryptOptions;
+            _userContext = userContext;
         }
 
         // ─── IReadModelRepository ────────────────────────────────────────────────
@@ -52,7 +57,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Sql
                 {
                     MemoryId = model.MemoryId,
                     StreamId = $"memory-{model.MemoryId}",
-                    UserId = model.UserId,
+                    UserId = model.UserId ?? string.Empty,
                     Summary = summary,
                     TokenCount = model.TokenCount,
                     Importance = model.Importance,
@@ -81,6 +86,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Sql
         public async Task<IEnumerable<MemoryReadModel>> GetMemoriesByIdsAsync(IEnumerable<Guid> memoryIds, CancellationToken ct)
         {
             var entities = await _db.MemoryReadModels
+                .TagWithUserAction(_userContext, "ReadModel.GetMemoriesByIds")
                 .Where(m => memoryIds.Contains(m.MemoryId))
                 .ToListAsync(ct);
 
@@ -99,6 +105,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Sql
         public async Task<IEnumerable<MemoryReadModel>> GetMemoriesByUserAsync(string userId, CancellationToken ct)
         {
             var entities = await _db.MemoryReadModels
+                .TagWithUserAction(_userContext, "ReadModel.GetMemoriesByUser")
                 .Where(m => m.UserId == userId)
                 .ToListAsync(ct);
 
@@ -118,21 +125,29 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Sql
         {
             if (string.IsNullOrWhiteSpace(userId) || userId == "default")
             {
-                return await _db.MemoryReadModels.CountAsync(m => !m.Archived, ct);
+                return await _db.MemoryReadModels
+                    .TagWithUserAction(_userContext, "ReadModel.GetTotalMemoryCount")
+                    .CountAsync(m => !m.Archived, ct);
             }
-            return await _db.MemoryReadModels.CountAsync(m => !m.Archived && m.UserId == userId, ct);
+            return await _db.MemoryReadModels
+                .TagWithUserAction(_userContext, "ReadModel.GetMemoryCountByUser")
+                .CountAsync(m => !m.Archived && m.UserId == userId, ct);
         }
 
         // ─── IEventIdempotencyStore ──────────────────────────────────────────────
 
         public async Task<bool> HasProcessedAsync(Guid aggregateId, int version, CancellationToken cancellationToken)
         {
-            return await _db.ProcessedEvents.AnyAsync(p => p.AggregateId == aggregateId && p.Version == version, cancellationToken);
+            return await _db.ProcessedEvents
+                .TagWithUserAction(_userContext, "EventIdempotency.HasProcessed")
+                .AnyAsync(p => p.AggregateId == aggregateId && p.Version == version, cancellationToken);
         }
 
         public async Task MarkProcessedAsync(Guid aggregateId, int version, CancellationToken cancellationToken)
         {
-            var exists = await _db.ProcessedEvents.AnyAsync(p => p.AggregateId == aggregateId && p.Version == version, cancellationToken);
+            var exists = await _db.ProcessedEvents
+                .TagWithUserAction(_userContext, "EventIdempotency.CheckProcessedBeforeMark")
+                .AnyAsync(p => p.AggregateId == aggregateId && p.Version == version, cancellationToken);
             if (!exists)
             {
                 _db.ProcessedEvents.Add(new ProcessedEventEntity
@@ -189,6 +204,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Sql
         public async Task<IEnumerable<ReadModelCandidate>> GetConsolidationCandidatesAsync(int batchSize, CancellationToken cancellationToken)
         {
             var rows = await _db.MemoryReadModels
+                .TagWithUserAction(_userContext, "Retention.GetConsolidationCandidates")
                 .Where(m => !m.Archived && m.TokenCount > 50)
                 .OrderByDescending(m => m.TokenCount)
                 .ThenBy(m => m.CreatedAt)
@@ -208,6 +224,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Sql
         {
             var cutoff = DateTime.UtcNow.AddDays(-ttlDays);
             var rows = await _db.MemoryReadModels
+                .TagWithUserAction(_userContext, "Retention.GetExpiredMemories")
                 .Where(m => !m.Archived && m.CreatedAt < cutoff)
                 .Take(100)
                 .ToListAsync(ct);
@@ -225,6 +242,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Sql
         {
             var cutoff = DateTime.UtcNow.AddDays(-olderThanDays);
             var rows = await _db.MemoryReadModels
+                .TagWithUserAction(_userContext, "Retention.GetArchivedMemories")
                 .Where(m => m.Archived && m.LastProcessedAt < cutoff)
                 .Take(100)
                 .ToListAsync(ct);
@@ -281,7 +299,9 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Sql
 
         public async Task UpsertFactAsync(TemporalFact fact, string userId, CancellationToken ct = default)
         {
-            var entity = await _db.TemporalFacts.FirstOrDefaultAsync(f => f.Id == fact.Id, ct);
+            var entity = await _db.TemporalFacts
+                .TagWithUserAction(_userContext, "TemporalFact.FindForUpsert")
+                .FirstOrDefaultAsync(f => f.Id == fact.Id, ct);
             if (entity == null)
             {
                 entity = new TemporalFactEntity
@@ -316,6 +336,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Sql
         public async Task InvalidateFactAsync(string userId, string subject, string predicate, DateTime invalidatedAtUtc, CancellationToken ct = default)
         {
             var activeFacts = await _db.TemporalFacts
+                .TagWithUserAction(_userContext, "TemporalFact.InvalidateFact")
                 .Where(f => f.UserId == userId && f.IsCurrent && f.Subject == subject && f.Predicate == predicate)
                 .ToListAsync(ct);
 
@@ -334,7 +355,9 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Sql
 
         public async Task<IReadOnlyList<TemporalFact>> GetCurrentFactsAsync(string userId, string? subject = null, CancellationToken ct = default)
         {
-            var query = _db.TemporalFacts.AsNoTracking()
+            var query = _db.TemporalFacts
+                .TagWithUserAction(_userContext, "TemporalFact.GetCurrentFacts")
+                .AsNoTracking()
                 .Where(f => f.UserId == userId && f.IsCurrent);
 
             if (!string.IsNullOrWhiteSpace(subject))
@@ -359,7 +382,9 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Sql
 
         public async Task<IReadOnlyList<TemporalFact>> GetFactHistoryAsync(string userId, string subject, string predicate, CancellationToken ct = default)
         {
-            var entities = await _db.TemporalFacts.AsNoTracking()
+            var entities = await _db.TemporalFacts
+                .TagWithUserAction(_userContext, "TemporalFact.GetFactHistory")
+                .AsNoTracking()
                 .Where(f => f.UserId == userId && f.Subject == subject && f.Predicate == predicate)
                 .OrderByDescending(f => f.ValidFromUtc)
                 .ToListAsync(ct);
