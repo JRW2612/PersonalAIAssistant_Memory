@@ -26,7 +26,7 @@ namespace PersonalAIAssistant.Memory.Tests.Validators
         {
             var command = new AddMemoryCommand(
                 RawText: "Valid memory text",
-                Source: source,
+                Source: source!,
                 Importance: MemoryImportance.Medium,
                 Tags: new List<string>(),
                 UserId: "user-1",
@@ -45,7 +45,7 @@ namespace PersonalAIAssistant.Memory.Tests.Validators
         {
             var command = new AddMemoryCommand(
                 RawText: "Valid memory text",
-                Source: source,
+                Source: source!,
                 Importance: MemoryImportance.Medium,
                 Tags: new List<string>(),
                 UserId: "user-1",

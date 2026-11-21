@@ -58,6 +58,14 @@ public sealed class PurgeUserMemoriesCommandHandler
             return 0;
         }
 
+        // Cross-tenant BOLA Defense: verify tenant boundary unless caller is global admin
+        if (!string.IsNullOrWhiteSpace(_userContext.TenantId) &&
+            !_userContext.Roles.Contains("GlobalAdmin", StringComparer.OrdinalIgnoreCase) &&
+            memories.Any(m => !string.IsNullOrWhiteSpace(m.TenantId) && !string.Equals(m.TenantId, _userContext.TenantId, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new UnauthorizedAccessException("Cross-tenant user memory purge is forbidden.");
+        }
+
         var purgedCount = 0;
         foreach (var memory in memories)
         {

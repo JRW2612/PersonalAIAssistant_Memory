@@ -26,6 +26,16 @@ public class UpdateMemoryCommandHandler : IRequestHandler<UpdateMemoryCommand, G
         if (history == null || !history.Any())
             throw new KeyNotFoundException($"Memory with ID {request.MemoryId} not found.");
 
+        // BOLA / IDOR Defense: verify memory ownership
+        var ownerUserId = history.Select(e => e.UserId).FirstOrDefault(u => !string.IsNullOrWhiteSpace(u));
+        if (!string.IsNullOrWhiteSpace(ownerUserId) &&
+            !string.IsNullOrWhiteSpace(request.UserId) &&
+            !string.Equals(request.UserId, "system", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(ownerUserId, request.UserId, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new UnauthorizedAccessException($"Memory '{request.MemoryId}' does not belong to user '{request.UserId}'.");
+        }
+
         var aggregate = new MemoryAggregate(new MemoryId(request.MemoryId));
         aggregate.LoadFromHistory(history);
 

@@ -14,16 +14,19 @@ public class DlqReplayController : ControllerBase
 {
     private readonly IAccessAssignmentRepository _repository;
     private readonly AccessAssignmentConsumer _consumer;
+    private readonly IUserContext? _userContext;
     private readonly ILogger<DlqReplayController> _logger;
 
     public DlqReplayController(
         IAccessAssignmentRepository repository,
         AccessAssignmentConsumer consumer,
-        ILogger<DlqReplayController> logger)
+        ILogger<DlqReplayController> logger,
+        IUserContext? userContext = null)
     {
         _repository = repository;
         _consumer = consumer;
         _logger = logger;
+        _userContext = userContext;
     }
 
     /// <summary>
@@ -39,6 +42,19 @@ public class DlqReplayController : ControllerBase
         if (assignment == null)
         {
             return NotFound(new { error = $"Assignment '{assignmentId}' was not found." });
+        }
+
+        // Cross-tenant BOLA Defense: Ensure non-global admins can only replay assignments within their own tenant
+        if (_userContext != null)
+        {
+            var isGlobalAdmin = _userContext.Roles.Contains("GlobalAdmin", StringComparer.OrdinalIgnoreCase);
+            if (!isGlobalAdmin && !string.IsNullOrWhiteSpace(_userContext.TenantId) && !string.IsNullOrWhiteSpace(assignment.TenantId)
+                && !string.Equals(_userContext.TenantId, assignment.TenantId, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("Admin '{AdminId}' in tenant '{CallerTenant}' attempted cross-tenant DLQ replay for assignment in '{TargetTenant}'.",
+                    _userContext.UserId, _userContext.TenantId, assignment.TenantId);
+                return Forbid();
+            }
         }
 
         if (assignment.Status != AssignmentStatus.Failed && assignment.Status != AssignmentStatus.RequiresReconciliation)

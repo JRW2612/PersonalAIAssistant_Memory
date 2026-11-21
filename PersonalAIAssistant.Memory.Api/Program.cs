@@ -262,7 +262,7 @@ builder.Services.AddCors(options =>
 // SEC-03: Startup fail-fast enforced by ProductionConfigurationValidator. No dev-credential fallbacks here.
 var useInMemory = builder.Configuration.GetValue<bool?>("UseInMemoryStore") ?? true;
 var postgresConn = builder.Configuration.GetConnectionString("PostgresReadModel");
-var mongoConn = builder.Configuration.GetConnectionString("MongoEventStore");
+var mongoConn = builder.Configuration.GetConnectionString("MongoEventStore") ?? "mongodb://localhost:27017";
 
 builder.Services.AddMemoryInfrastructureServices(
     configureDbContext: options =>

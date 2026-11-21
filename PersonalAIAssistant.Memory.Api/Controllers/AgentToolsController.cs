@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Business.Queries;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
+using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using PersonalAIAssistant.Memory.Core.Models;
 using MediatR;
 
@@ -16,15 +17,22 @@ public class AgentToolsController : ControllerBase
 {
     private readonly IAgentToolService _toolService;
     private readonly IMediator _mediator;
+    private readonly IUserContext? _userContext;
 
-    public AgentToolsController(IAgentToolService toolService, IMediator mediator)
+    public AgentToolsController(IAgentToolService toolService, IMediator mediator, IUserContext? userContext = null)
     {
         _toolService = toolService;
         _mediator = mediator;
+        _userContext = userContext;
     }
 
     private string GetCurrentUserId()
     {
+        if (_userContext != null && !string.IsNullOrWhiteSpace(_userContext.UserId))
+        {
+            return _userContext.UserId;
+        }
+
         if (HttpContext?.Items.TryGetValue("UserId", out var userIdObj) == true && userIdObj is string userId && !string.IsNullOrEmpty(userId))
         {
             return userId;

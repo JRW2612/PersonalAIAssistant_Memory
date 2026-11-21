@@ -78,7 +78,7 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
             }
 
             // Issue M2M scoped JWT
-            var jwtSecret = _config["Jwt:SecretKey"] ?? "SuperSecretJwtAuthenticationSigningKey32BytesLongStringForHmacSha256!";
+            var jwtSecret = _config["Jwt:SecretKey"] ?? throw new InvalidOperationException("JWT signing key 'Jwt:SecretKey' is not configured.");
             var jwtIssuer = _config["Jwt:Issuer"] ?? "PersonalAIAssistant.Memory";
             var jwtAudience = _config["Jwt:Audience"] ?? "PersonalAIAssistant.Memory.Api";
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret));

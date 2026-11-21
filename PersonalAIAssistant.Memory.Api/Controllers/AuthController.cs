@@ -33,7 +33,7 @@ public class AuthController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.UserId))
             return BadRequest("UserId is required.");
 
-        var jwtSecret = _configuration["Jwt:SecretKey"] ?? "SuperSecretJwtAuthenticationSigningKey32BytesLongStringForHmacSha256!";
+        var jwtSecret = _configuration["Jwt:SecretKey"] ?? throw new InvalidOperationException("JWT signing key 'Jwt:SecretKey' is not configured.");
         var jwtIssuer = _configuration["Jwt:Issuer"] ?? "PersonalAIAssistant.Memory";
         var jwtAudience = _configuration["Jwt:Audience"] ?? "PersonalAIAssistant.Memory.Api";
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret));
