@@ -293,7 +293,7 @@ public class MemoriesController : ControllerBase
             MergedMemoryIds: dto.MergedMemoryIds,
             ConsolidatedText: dto.ConsolidatedText,
             UserId: userId,
-            ProvenanceLinks: dto.ProvenanceLinks ?? Array.Empty<string>()
+            ProvenanceLinks: dto.ProvenanceLinks ?? new List<string>()
         );
 
         var resultId = await _mediator.Send(command, ct);

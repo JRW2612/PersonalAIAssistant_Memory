@@ -20,9 +20,13 @@ using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
 using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using PersonalAIAssistant.Memory.Core.Interfaces.Persistence;
+using PersonalAIAssistant.Memory.Core.Interfaces.Safety;
 using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using PersonalAIAssistant.Memory.Core.Models;
+using PersonalAIAssistant.Memory.Core.Models.Safety;
+using PersonalAIAssistant.Memory.Events;
 using PersonalAIAssistant.Memory.Infrastructure.AI;
+using PersonalAIAssistant.Memory.Infrastructure.Security;
 using Xunit;
 
 namespace PersonalAIAssistant.Memory.Tests.Security;
@@ -650,5 +654,279 @@ public class CodeSmellsAndVulnerabilitiesTests
         json.Should().NotContain("IdempotencyKey");
         json.Should().NotContain("RetryCount");
         json.Should().NotContain("LastError");
+    }
+
+    // =========================================================================
+    // Additional BOLA / IDOR, Cancellation & Security Tests
+    // =========================================================================
+
+    [Fact]
+    public async Task SafetyEvaluationController_GetEpisode_DifferentUser_Returns403Forbidden()
+    {
+        // Arrange
+        var episodeId = Guid.NewGuid();
+        var episodeRepoMock = new Mock<ITrajectoryEpisodeRepository>();
+        episodeRepoMock.Setup(r => r.GetEpisodeByIdAsync(episodeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentTrajectoryEpisode
+            {
+                EpisodeId = episodeId,
+                UserId = "user-bob",
+                TenantId = "tenant-bob"
+            });
+
+        var userContextMock = new Mock<IUserContext>();
+        userContextMock.Setup(u => u.UserId).Returns("user-alice");
+        userContextMock.Setup(u => u.TenantId).Returns("tenant-alice");
+        userContextMock.Setup(u => u.IsAdmin).Returns(false);
+
+        var auditLoggerMock = new Mock<ISecurityAuditLogger>();
+
+        var controller = new SafetyEvaluationController(
+            Mock.Of<IToolInterlockService>(),
+            episodeRepoMock.Object,
+            Mock.Of<ISafetyEvaluationService>(),
+            userContextMock.Object,
+            auditLoggerMock.Object,
+            NullLogger<SafetyEvaluationController>.Instance);
+
+        // Act
+        var result = await controller.GetEpisode(episodeId, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<ForbidResult>();
+        auditLoggerMock.Verify(a => a.LogAccessDenied("user-alice", "GET_EPISODE", episodeId.ToString(), It.IsAny<string>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SafetyEvaluationController_RecordTurn_DifferentUser_Returns403Forbidden()
+    {
+        // Arrange
+        var episodeId = Guid.NewGuid();
+        var episodeRepoMock = new Mock<ITrajectoryEpisodeRepository>();
+        episodeRepoMock.Setup(r => r.GetEpisodeByIdAsync(episodeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentTrajectoryEpisode
+            {
+                EpisodeId = episodeId,
+                UserId = "user-bob",
+                TenantId = "tenant-bob"
+            });
+
+        var userContextMock = new Mock<IUserContext>();
+        userContextMock.Setup(u => u.UserId).Returns("user-alice");
+        userContextMock.Setup(u => u.TenantId).Returns("tenant-alice");
+        userContextMock.Setup(u => u.IsAdmin).Returns(false);
+
+        var controller = new SafetyEvaluationController(
+            Mock.Of<IToolInterlockService>(),
+            episodeRepoMock.Object,
+            Mock.Of<ISafetyEvaluationService>(),
+            userContextMock.Object,
+            Mock.Of<ISecurityAuditLogger>(),
+            NullLogger<SafetyEvaluationController>.Instance);
+
+        var dto = new RecordTurnRequestDto(
+            Observation: new TurnObservation { RawObservationSummary = "obs" },
+            AgentBelief: new TurnAgentBelief { ReasoningSnippet = "belief" },
+            Action: new TurnAction { ToolName = "move", Arguments = JsonDocument.Parse("{}").RootElement },
+            GroundTruth: new TurnGroundTruth { ActualObjectHeld = true });
+
+        // Act
+        var result = await controller.RecordTurn(episodeId, dto, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<ForbidResult>();
+        episodeRepoMock.Verify(r => r.AppendTurnAsync(It.IsAny<Guid>(), It.IsAny<TrajectoryTurn>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SafetyEvaluationController_ListEpisodes_NonAdmin_FiltersOutOtherUsersAndTenants()
+    {
+        // Arrange
+        var episodeRepoMock = new Mock<ITrajectoryEpisodeRepository>();
+        episodeRepoMock.Setup(r => r.ListEpisodesAsync(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<AgentTrajectoryEpisode>
+            {
+                new() { EpisodeId = Guid.NewGuid(), UserId = "user-alice", TenantId = "tenant-alice" },
+                new() { EpisodeId = Guid.NewGuid(), UserId = "user-bob", TenantId = "tenant-bob" }
+            });
+
+        var userContextMock = new Mock<IUserContext>();
+        userContextMock.Setup(u => u.UserId).Returns("user-alice");
+        userContextMock.Setup(u => u.TenantId).Returns("tenant-alice");
+        userContextMock.Setup(u => u.IsAdmin).Returns(false);
+
+        var controller = new SafetyEvaluationController(
+            Mock.Of<IToolInterlockService>(),
+            episodeRepoMock.Object,
+            Mock.Of<ISafetyEvaluationService>(),
+            userContextMock.Object,
+            Mock.Of<ISecurityAuditLogger>(),
+            NullLogger<SafetyEvaluationController>.Instance);
+
+        // Act
+        var result = await controller.ListEpisodes(null, null, 20, CancellationToken.None);
+
+        // Assert
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var episodes = okResult.Value.Should().BeAssignableTo<IEnumerable<AgentTrajectoryEpisode>>().Subject.ToList();
+        episodes.Should().HaveCount(1);
+        episodes.Single().UserId.Should().Be("user-alice");
+    }
+
+    [Fact]
+    public async Task UpdateMemoryCommandHandler_MemoryOwnedByDifferentUser_ThrowsUnauthorizedAccessException()
+    {
+        // Arrange
+        var memoryId = Guid.NewGuid();
+        var eventStoreMock = new Mock<IEventStore>();
+        eventStoreMock.Setup(e => e.GetEventsAsync($"memory-{memoryId}", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<MemoryEvent>
+            {
+                new MemoryAddedEvent
+                {
+                    AggregateId = memoryId,
+                    RawText = "Victim memory",
+                    UserId = "user-victim",
+                    Version = 1
+                }
+            });
+
+        var handler = new UpdateMemoryCommandHandler(eventStoreMock.Object, Mock.Of<IEventBus>());
+        var command = new UpdateMemoryCommand(memoryId, "user-attacker", new Dictionary<string, string> { { "RawText", "Hacked text" } });
+
+        // Act
+        var act = () => handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+            .WithMessage($"*Memory '{memoryId}' does not belong to user 'user-attacker'*");
+    }
+
+    [Fact]
+    public async Task DeleteMemoryCommandHandler_MemoryOwnedByDifferentUser_ThrowsUnauthorizedAccessException()
+    {
+        // Arrange
+        var memoryId = Guid.NewGuid();
+        var eventStoreMock = new Mock<IEventStore>();
+        eventStoreMock.Setup(e => e.GetEventsAsync($"memory-{memoryId}", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<MemoryEvent>
+            {
+                new MemoryAddedEvent
+                {
+                    AggregateId = memoryId,
+                    RawText = "Victim memory",
+                    UserId = "user-victim",
+                    Version = 1
+                }
+            });
+
+        var handler = new DeleteMemoryCommandHandler(eventStoreMock.Object, Mock.Of<IEventBus>());
+        var command = new DeleteMemoryCommand(memoryId, "Attacking delete", "user-attacker");
+
+        // Act
+        var act = () => handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+            .WithMessage($"*Memory '{memoryId}' does not belong to user 'user-attacker'*");
+    }
+
+    [Fact]
+    public async Task CompressMemoryCommandHandler_MemoryOwnedByDifferentUser_ThrowsUnauthorizedAccessException()
+    {
+        // Arrange
+        var memoryId = Guid.NewGuid();
+        var eventStoreMock = new Mock<IEventStore>();
+        eventStoreMock.Setup(e => e.GetEventsAsync($"memory-{memoryId}", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<MemoryEvent>
+            {
+                new MemoryAddedEvent
+                {
+                    AggregateId = memoryId,
+                    RawText = "Victim memory",
+                    UserId = "user-victim",
+                    Version = 1
+                }
+            });
+
+        var handler = new CompressMemoryCommandHandler(
+            eventStoreMock.Object,
+            Mock.Of<IEventBus>(),
+            Mock.Of<ICompressionService>(),
+            NullLogger<CompressMemoryCommandHandler>.Instance);
+
+        var command = new CompressMemoryCommand(memoryId, "Compressed text", "model", 10, "user-attacker");
+
+        // Act
+        var act = () => handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+            .WithMessage($"*Memory '{memoryId}' does not belong to user 'user-attacker'*");
+    }
+
+    [Fact]
+    public async Task ConsolidateMemoriesCommandHandler_WhenCancellationRequested_PropagatesOperationCanceledException()
+    {
+        // Arrange
+        var aiFactoryMock = new Mock<IAIProviderFactory>();
+        var aiProviderMock = new Mock<IAIProvider>();
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel(); // Pre-canceled
+
+        aiProviderMock.Setup(p => p.GetResponseAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OperationCanceledException(cts.Token));
+        aiFactoryMock.Setup(f => f.GetProvider(It.IsAny<string?>())).Returns(aiProviderMock.Object);
+
+        var handler = new ConsolidateMemoriesCommandHandler(
+            Mock.Of<IEventStore>(),
+            Mock.Of<IEventBus>(),
+            aiFactoryMock.Object,
+            NullLogger<ConsolidateMemoriesCommandHandler>.Instance);
+
+        var command = new ConsolidateMemoriesCommand(
+            NewMemoryId: Guid.NewGuid(),
+            MergedMemoryIds: new List<Guid>(),
+            ConsolidatedText: "Some text",
+            UserId: "user-1",
+            ProvenanceLinks: new List<string>());
+
+        // Act & Assert: Must rethrow OperationCanceledException
+        var act = () => handler.Handle(command, cts.Token);
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
+    public async Task PurgeUserMemories_CrossTenantMemoryFound_ThrowsUnauthorizedAccessException()
+    {
+        // Arrange
+        var readRepoMock = new Mock<IReadModelRepository>();
+        var userContextMock = new Mock<IUserContext>();
+        userContextMock.Setup(u => u.IsAdmin).Returns(true);
+        userContextMock.Setup(u => u.TenantId).Returns("tenant-alpha");
+        userContextMock.Setup(u => u.Roles).Returns(new List<string> { "Admin" }); // Not GlobalAdmin
+
+        readRepoMock.Setup(r => r.GetMemoriesByUserAsync("user-target", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<MemoryReadModel>
+            {
+                new() { MemoryId = Guid.NewGuid(), UserId = "user-target", TenantId = "tenant-beta" } // Different tenant!
+            });
+
+        var handler = new PurgeUserMemoriesCommandHandler(
+            readRepoMock.Object,
+            Mock.Of<IRetentionQueryStore>(),
+            Mock.Of<IEventStore>(),
+            Mock.Of<IEventBus>(),
+            Mock.Of<IVectorMemoryRepository>(),
+            userContextMock.Object,
+            NullLogger<PurgeUserMemoriesCommandHandler>.Instance);
+
+        var command = new PurgeUserMemoriesCommand("user-target", "GDPR", "auditor-1");
+
+        // Act & Assert
+        var act = () => handler.Handle(command, CancellationToken.None);
+        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+            .WithMessage("*Cross-tenant user memory purge is forbidden*");
     }
 }
