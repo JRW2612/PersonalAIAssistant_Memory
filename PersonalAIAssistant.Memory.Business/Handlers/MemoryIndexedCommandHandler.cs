@@ -3,19 +3,16 @@ using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Domains.ValueObjects;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
-using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 
 namespace PersonalAIAssistant.Memory.Business.Handlers;
 
 public class MemoryIndexedCommandHandler : IRequestHandler<MemoryIndexedCommand, bool>
 {
     private readonly IEventStore _eventStore;
-    private readonly IEventBus _eventBus;
 
-    public MemoryIndexedCommandHandler(IEventStore eventStore, IEventBus eventBus)
+    public MemoryIndexedCommandHandler(IEventStore eventStore)
     {
         _eventStore = eventStore;
-        _eventBus = eventBus;
     }
 
     public async Task<bool> Handle(MemoryIndexedCommand request, CancellationToken cancellationToken)
@@ -36,8 +33,8 @@ public class MemoryIndexedCommandHandler : IRequestHandler<MemoryIndexedCommand,
             return true;
 
         var expectedVersion = aggregate.Version - uncommittedEvents.Count;
-        await _eventStore.AppendEventsAsync(streamId, uncommittedEvents, expectedVersion, cancellationToken);
-        await _eventBus.PublishAsync(uncommittedEvents, cancellationToken);
+        var outboxMessages = EventOutboxMessageFactory.Create(uncommittedEvents);
+        await _eventStore.AppendEventsWithOutboxAsync(streamId, uncommittedEvents, expectedVersion, outboxMessages, cancellationToken);
         aggregate.ClearUncommittedEvents();
 
         return true;

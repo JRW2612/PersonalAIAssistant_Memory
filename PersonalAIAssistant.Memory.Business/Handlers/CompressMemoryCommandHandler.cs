@@ -5,7 +5,6 @@ using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Domains.ValueObjects;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
-using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 
 namespace PersonalAIAssistant.Memory.Business.Handlers;
 
@@ -16,18 +15,15 @@ namespace PersonalAIAssistant.Memory.Business.Handlers;
 public class CompressMemoryCommandHandler : IRequestHandler<CompressMemoryCommand, Guid>
 {
     private readonly IEventStore _eventStore;
-    private readonly IEventBus _eventBus;
     private readonly ICompressionService _compressionService;
     private readonly ILogger<CompressMemoryCommandHandler> _logger;
 
     public CompressMemoryCommandHandler(
         IEventStore eventStore,
-        IEventBus eventBus,
         ICompressionService compressionService,
         ILogger<CompressMemoryCommandHandler> logger)
     {
         _eventStore = eventStore;
-        _eventBus = eventBus;
         _compressionService = compressionService;
         _logger = logger;
     }
@@ -66,8 +62,8 @@ public class CompressMemoryCommandHandler : IRequestHandler<CompressMemoryComman
             return aggregate.Id.Value;
 
         var expectedVersion = aggregate.Version - uncommittedEvents.Count;
-        await _eventStore.AppendEventsAsync(streamId, uncommittedEvents, expectedVersion, cancellationToken);
-        await _eventBus.PublishAsync(uncommittedEvents, cancellationToken);
+        var outboxMessages = EventOutboxMessageFactory.Create(uncommittedEvents);
+        await _eventStore.AppendEventsWithOutboxAsync(streamId, uncommittedEvents, expectedVersion, outboxMessages, cancellationToken);
         aggregate.ClearUncommittedEvents();
 
         return aggregate.Id.Value;

@@ -18,7 +18,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Sql
         IProcessingLockStore,
         IRetentionQueryStore,
         ITransactionalReadModelRepository,
-        ITemporalFactRepository
+        ITemporalFactRepository,
+        IEmbeddingIndexingStore
     {
         private readonly ReadModelDbContext _db;
         private readonly IEncryptionService _encryptionService;
@@ -64,7 +65,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Sql
                     CreatedAt = model.CreatedAt != default ? model.CreatedAt : DateTime.UtcNow,
                     Archived = model.Archived,
                     LastProcessedAt = DateTime.UtcNow,
-                    IsEncrypted = isEncrypted
+                    IsEncrypted = isEncrypted,
+                    Version = model.Version
                 };
                 _db.MemoryReadModels.Add(entity);
             }
@@ -77,6 +79,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Sql
                 existing.Archived = model.Archived;
                 existing.LastProcessedAt = DateTime.UtcNow;
                 existing.IsEncrypted = isEncrypted;
+                if (model.Version > 0) existing.Version = model.Version;
                 _db.MemoryReadModels.Update(existing);
             }
 
@@ -98,7 +101,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Sql
                 TokenCount = e.TokenCount,
                 Archived = e.Archived,
                 Importance = e.Importance,
-                CreatedAt = e.CreatedAt
+                CreatedAt = e.CreatedAt,
+                Version = e.Version
             });
         }
 
@@ -117,7 +121,8 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Sql
                 TokenCount = e.TokenCount,
                 Archived = e.Archived,
                 Importance = e.Importance,
-                CreatedAt = e.CreatedAt
+                CreatedAt = e.CreatedAt,
+                Version = e.Version
             });
         }
 
@@ -158,6 +163,56 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Sql
                 });
                 await _db.SaveChangesAsync(cancellationToken);
             }
+        }
+
+        // ─── IEmbeddingIndexingStore ────────────────────────────────────────────
+
+        public async Task<bool> TryStartAsync(Guid aggregateId, int eventVersion, CancellationToken ct)
+        {
+            var exists = await _db.EmbeddingIndexingRecords.AnyAsync(
+                x => x.AggregateId == aggregateId && x.EventVersion == eventVersion, ct);
+            if (exists) return false;
+
+            var record = new EmbeddingIndexingEntity
+            {
+                AggregateId = aggregateId,
+                EventVersion = eventVersion,
+                StartedAtUtc = DateTime.UtcNow
+            };
+            _db.EmbeddingIndexingRecords.Add(record);
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+                return true;
+            }
+            catch (DbUpdateException)
+            {
+                _db.Entry(record).State = EntityState.Detached;
+                if (await _db.EmbeddingIndexingRecords.AnyAsync(
+                    x => x.AggregateId == aggregateId && x.EventVersion == eventVersion, ct))
+                {
+                    return false;
+                }
+
+                throw;
+            }
+        }
+
+        public async Task MarkCompletedAsync(Guid aggregateId, int eventVersion, CancellationToken ct)
+        {
+            var record = await _db.EmbeddingIndexingRecords.FindAsync(new object[] { aggregateId, eventVersion }, ct)
+                ?? throw new InvalidOperationException($"Embedding claim for aggregate {aggregateId} version {eventVersion} was not found.");
+            record.CompletedAtUtc = DateTime.UtcNow;
+            record.Failure = null;
+            await _db.SaveChangesAsync(ct);
+        }
+
+        public async Task MarkFailedAsync(Guid aggregateId, int eventVersion, string error, CancellationToken ct)
+        {
+            var record = await _db.EmbeddingIndexingRecords.FindAsync(new object[] { aggregateId, eventVersion }, ct)
+                ?? throw new InvalidOperationException($"Embedding claim for aggregate {aggregateId} version {eventVersion} was not found.");
+            record.Failure = error.Length > 4000 ? error[..4000] : error;
+            await _db.SaveChangesAsync(ct);
         }
 
         // ─── IProcessingLockStore ────────────────────────────────────────────────
@@ -267,7 +322,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Sql
                 return;
             }
 
-            await using var tx = await _db.Database.BeginTransactionAsync(ct);
+            await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
             try
             {
                 await operation(ct);

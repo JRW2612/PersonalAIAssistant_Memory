@@ -368,7 +368,6 @@ public class CodeSmellsAndVulnerabilitiesTests
             readRepoMock.Object,
             Mock.Of<IRetentionQueryStore>(),
             eventStoreMock.Object,
-            Mock.Of<IEventBus>(),
             Mock.Of<IVectorMemoryRepository>(),
             userContextMock.Object,
             NullLogger<PurgeUserMemoriesCommandHandler>.Instance);

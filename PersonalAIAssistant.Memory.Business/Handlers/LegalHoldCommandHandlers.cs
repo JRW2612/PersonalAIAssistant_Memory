@@ -3,20 +3,17 @@ using Microsoft.Extensions.Logging;
 using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
-using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 
 namespace PersonalAIAssistant.Memory.Business.Handlers;
 
 public sealed class ApplyLegalHoldCommandHandler : IRequestHandler<ApplyLegalHoldCommand>
 {
     private readonly IEventStore _eventStore;
-    private readonly IEventBus _eventBus;
     private readonly ILogger<ApplyLegalHoldCommandHandler> _logger;
 
-    public ApplyLegalHoldCommandHandler(IEventStore eventStore, IEventBus eventBus, ILogger<ApplyLegalHoldCommandHandler> logger)
+    public ApplyLegalHoldCommandHandler(IEventStore eventStore, ILogger<ApplyLegalHoldCommandHandler> logger)
     {
         _eventStore = eventStore;
-        _eventBus = eventBus;
         _logger = logger;
     }
 
@@ -34,8 +31,8 @@ public sealed class ApplyLegalHoldCommandHandler : IRequestHandler<ApplyLegalHol
         if (newEvents.Any())
         {
             var expectedVersion = aggregate.Version - newEvents.Count;
-            await _eventStore.AppendEventsAsync(streamId, newEvents, expectedVersion, cancellationToken);
-            await _eventBus.PublishAsync(newEvents, cancellationToken);
+            var outboxMessages = EventOutboxMessageFactory.Create(newEvents);
+            await _eventStore.AppendEventsWithOutboxAsync(streamId, newEvents, expectedVersion, outboxMessages, cancellationToken);
         }
 
         _logger.LogInformation("[Legal Hold] Applied to memory {MemoryId} by auditor {AuditorId}, reason: {Reason}",
@@ -46,13 +43,11 @@ public sealed class ApplyLegalHoldCommandHandler : IRequestHandler<ApplyLegalHol
 public sealed class ReleaseLegalHoldCommandHandler : IRequestHandler<ReleaseLegalHoldCommand>
 {
     private readonly IEventStore _eventStore;
-    private readonly IEventBus _eventBus;
     private readonly ILogger<ReleaseLegalHoldCommandHandler> _logger;
 
-    public ReleaseLegalHoldCommandHandler(IEventStore eventStore, IEventBus eventBus, ILogger<ReleaseLegalHoldCommandHandler> logger)
+    public ReleaseLegalHoldCommandHandler(IEventStore eventStore, ILogger<ReleaseLegalHoldCommandHandler> logger)
     {
         _eventStore = eventStore;
-        _eventBus = eventBus;
         _logger = logger;
     }
 
@@ -70,8 +65,8 @@ public sealed class ReleaseLegalHoldCommandHandler : IRequestHandler<ReleaseLega
         if (newEvents.Any())
         {
             var expectedVersion = aggregate.Version - newEvents.Count;
-            await _eventStore.AppendEventsAsync(streamId, newEvents, expectedVersion, cancellationToken);
-            await _eventBus.PublishAsync(newEvents, cancellationToken);
+            var outboxMessages = EventOutboxMessageFactory.Create(newEvents);
+            await _eventStore.AppendEventsWithOutboxAsync(streamId, newEvents, expectedVersion, outboxMessages, cancellationToken);
         }
 
         _logger.LogInformation("[Legal Hold] Released from memory {MemoryId} by auditor {AuditorId}",

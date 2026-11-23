@@ -114,7 +114,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
 
                 if (outboxMessages != null && outboxMessages.Count > 0)
                 {
-                    var outboxDocs = outboxMessages.Select(m => OutboxDocument.FromOutboxMessage(m)).ToList();
+                    var outboxDocs = outboxMessages.Select(m => CreateOutboxDocument(m, events)).ToList();
                     await _outboxCollection.InsertManyAsync(session, outboxDocs, cancellationToken: ct);
                 }
 
@@ -132,7 +132,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
 
                 if (outboxMessages != null && outboxMessages.Count > 0)
                 {
-                    var outboxDocs = outboxMessages.Select(m => OutboxDocument.FromOutboxMessage(m)).ToList();
+                    var outboxDocs = outboxMessages.Select(m => CreateOutboxDocument(m, events)).ToList();
                     await _outboxCollection.InsertManyAsync(outboxDocs, cancellationToken: ct);
                 }
 
@@ -143,6 +143,21 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
                 await session.AbortTransactionAsync(cancellationToken: ct);
                 throw;
             }
+        }
+
+        private static OutboxDocument CreateOutboxDocument(
+            PersonalAIAssistant.Memory.Core.Messages.OutboxMessage message,
+            IReadOnlyList<MemoryEvent>? events)
+        {
+            var document = OutboxDocument.FromOutboxMessage(message);
+            var evt = events?.FirstOrDefault(x => x.EventId == message.MessageId);
+            if (evt != null)
+            {
+                document.Payload = System.Text.Json.JsonSerializer.Serialize(evt, evt.GetType());
+                document.OccurredAt = evt.Timestamp;
+            }
+
+            return document;
         }
 
         public async Task<IReadOnlyList<MemoryEvent>> GetEventsAsync(string streamId, CancellationToken ct)

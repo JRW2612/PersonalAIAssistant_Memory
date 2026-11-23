@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using PersonalAIAssistant.Memory.Events;
+using PersonalAIAssistant.Memory.Infrastructure.Messaging;
 
 namespace PersonalAIAssistant.Memory.Infrastructure.EF
 {
@@ -34,7 +35,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
                         continue;
                     }
 
-                    var publishEndpoint = scope.ServiceProvider.GetService<IPublishEndpoint>();
+                    var sendEndpointProvider = scope.ServiceProvider.GetRequiredService<ISendEndpointProvider>();
 
                     // Grab a small batch of pending outbox messages ordered by when they happened.
                     var docs = await db.OutboxMessages
@@ -57,17 +58,13 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
                             var eventType = typeof(MemoryEvent).Assembly.GetTypes().FirstOrDefault(t => t.Name == doc.MessageType);
                             if (eventType == null)
                             {
-                                _logger.LogWarning("Unknown outbox message type: {Type}", doc.MessageType);
-                                doc.DispatchedAt = DateTime.UtcNow;
-                                continue;
+                                throw new InvalidOperationException($"Unknown outbox message type '{doc.MessageType}' for message {doc.MessageId}.");
                             }
 
                             var evt = (MemoryEvent?)System.Text.Json.JsonSerializer.Deserialize(doc.Payload, eventType);
                             if (evt == null)
                             {
-                                _logger.LogWarning("Failed to deserialize outbox payload for message {Id}", doc.MessageId);
-                                doc.DispatchedAt = DateTime.UtcNow;
-                                continue;
+                                throw new InvalidOperationException($"Failed to deserialize outbox payload for message {doc.MessageId}.");
                             }
 
                             if (string.IsNullOrEmpty(evt.Traceparent))
@@ -75,13 +72,12 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
                                 evt.Traceparent = PersonalAIAssistant.Memory.Core.Observability.W3CTraceContext.Create().ToString();
                             }
 
-                            if (publishEndpoint != null)
+                            var endpoint = await sendEndpointProvider.GetSendEndpoint(
+                                new Uri($"queue:{MemoryEventPartitioning.GetQueueName(evt.AggregateId)}"));
+                            await endpoint.Send((object)evt, sendContext =>
                             {
-                                await publishEndpoint.Publish((object)evt, sendContext =>
-                                {
-                                    sendContext.Headers.Set(PersonalAIAssistant.Memory.Core.Observability.W3CTraceContext.HeaderName, evt.Traceparent);
-                                }, stoppingToken);
-                            }
+                                sendContext.Headers.Set(PersonalAIAssistant.Memory.Core.Observability.W3CTraceContext.HeaderName, evt.Traceparent);
+                            }, stoppingToken);
 
                             doc.DispatchedAt = DateTime.UtcNow;
                             doc.Attempts += 1;

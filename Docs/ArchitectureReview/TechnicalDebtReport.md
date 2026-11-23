@@ -6,25 +6,20 @@ The main technical debt in this repository is architectural incompleteness rathe
 
 ## Debt Register
 
-### TD-01 Dual write between event store and bus
+### TD-01 Dual write between event store and bus — addressed
 
 - Location:
-  - `PersonalAIAssistant.Memory.Business/Handlers/AddMemoryCommandHandler.cs`
-  - `PersonalAIAssistant.Memory.Business/Handlers/DeleteMemoryCommandHandler.cs`
-  - `PersonalAIAssistant.Memory.Business/Workers/ConsolidationWorker.cs`
+  - Business command handlers and background workers
+  - `PersonalAIAssistant.Memory.Infrastructure/EF/EfEventStore.cs`
+  - `PersonalAIAssistant.Memory.Infrastructure/EF/EfOutboxDispatcherService.cs`
 - Description:
-  - Events are stored first and published second through `IEventBus`.
+  - Event-producing command and worker paths now append events with outbox messages; the dispatcher routes them to aggregate-partition queues.
 - Impact:
-  - Lost publications if the process stops between persistence and publish
-  - Read-model divergence
-  - Broken auditability
+  - The configured EF event store commits events and outbox rows in one transaction, removing the handler-side append/publish crash window.
 - Risk:
-  - Critical
-- Remediation:
-  - Add an outbox persisted atomically with event append
-  - Publish asynchronously from an outbox dispatcher
-- Estimated effort:
-  - 24 to 32 hours
+  - Addressed for the EF-backed production path. The Mongo fallback has a best-effort mode when server transactions are unavailable.
+- Operational note:
+  - Apply `Deploy/sql/20261123_projection_ordering_and_embedding_claims.sql` before deploying the read-model changes.
 
 ### TD-02 Development-only event bus
 

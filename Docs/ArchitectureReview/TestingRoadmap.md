@@ -8,7 +8,7 @@ The repository contains the foundation, but comprehensive testing strategies for
 | Component | Target Coverage | Strategy |
 |-----------|-----------------|----------|
 | **Aggregates** | 100% | Pure Unit Tests. Given (Events) -> When (Command) -> Then (Events). |
-| **Handlers** | 90% | Unit Tests mocking `IEventStore` and `IEventBus`. |
+| **Handlers** | 90% | Unit Tests verifying atomic event-store/outbox appends. |
 | **Repositories** | 80% | Integration Tests via Testcontainers (MongoDB / SQL Server). |
 | **Workers** | 80% | Integration Tests verifying DB polling and API mocking (WireMock for LLM). |
 | **Projections** | 90% | Integration Tests. Publish Event -> Assert SQL Read Model state. |

@@ -3,23 +3,19 @@ using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Domains.ValueObjects;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
-using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 
 namespace PersonalAIAssistant.Memory.Business.Handlers;
 
 public class SnapshotCreatedCommandHandler : IRequestHandler<SnapshotCreatedCommand, Guid>
 {
     private readonly IEventStore _eventStore;
-    private readonly IEventBus _eventBus;
     private readonly ISnapshotRepository _snapshotRepo;
 
     public SnapshotCreatedCommandHandler(
         IEventStore eventStore,
-        IEventBus eventBus,
         ISnapshotRepository snapshotRepo)
     {
         _eventStore = eventStore;
-        _eventBus = eventBus;
         _snapshotRepo = snapshotRepo;
     }
 
@@ -43,8 +39,8 @@ public class SnapshotCreatedCommandHandler : IRequestHandler<SnapshotCreatedComm
         if (uncommittedEvents.Any())
         {
             var expectedVersion = aggregate.Version - uncommittedEvents.Count;
-            await _eventStore.AppendEventsAsync(streamId, uncommittedEvents, expectedVersion, cancellationToken);
-            await _eventBus.PublishAsync(uncommittedEvents, cancellationToken);
+            var outboxMessages = EventOutboxMessageFactory.Create(uncommittedEvents);
+            await _eventStore.AppendEventsWithOutboxAsync(streamId, uncommittedEvents, expectedVersion, outboxMessages, cancellationToken);
             aggregate.ClearUncommittedEvents();
         }
 

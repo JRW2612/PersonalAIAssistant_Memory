@@ -49,8 +49,8 @@ Major modules:
 - `Domains/MemoryAggregate.cs`: primary aggregate root and event application logic
 - `Domains/MemoryAggregateFactory.cs`: rehydration and snapshot payload helper
 - `Domains/ValueObjects/MemoryId.cs`: strong aggregate identity
-- `Interfaces/Mongo/IEventStore.cs`: write-side event store abstraction
-- `Interfaces/Others/IEventBus.cs`: event publication abstraction
+- `Interfaces/EventSourcing/IEventStore.cs`: write-side event store and transactional outbox abstraction
+- `Interfaces/Messaging/IEventBus.cs`: legacy publisher contract (not registered in application hosts)
 - `Interfaces/Others/ISnapshotRepository.cs`: snapshot persistence abstraction
 - `Interfaces/Others/ICompressionService.cs`: compression abstraction
 - `Interfaces/Others/IEmbeddingService.cs`: placeholder AI abstraction

@@ -5,7 +5,6 @@ using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Domains.ValueObjects;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
-using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using PersonalAIAssistant.Memory.Core.Interfaces.Persistence;
 
 namespace PersonalAIAssistant.Memory.Business.Handlers;
@@ -20,20 +19,17 @@ namespace PersonalAIAssistant.Memory.Business.Handlers;
 public class ConsolidateMemoriesCommandHandler : IRequestHandler<ConsolidateMemoriesCommand, Guid>
 {
     private readonly IEventStore _eventStore;
-    private readonly IEventBus _eventBus;
     private readonly IAIProviderFactory _aiFactory;
     private readonly IReadModelRepository? _readRepo;
     private readonly ILogger<ConsolidateMemoriesCommandHandler> _logger;
 
     public ConsolidateMemoriesCommandHandler(
         IEventStore eventStore,
-        IEventBus eventBus,
         IAIProviderFactory aiFactory,
         IReadModelRepository readRepo,
         ILogger<ConsolidateMemoriesCommandHandler> logger)
     {
         _eventStore = eventStore;
-        _eventBus = eventBus;
         _aiFactory = aiFactory;
         _readRepo = readRepo;
         _logger = logger;
@@ -41,10 +37,9 @@ public class ConsolidateMemoriesCommandHandler : IRequestHandler<ConsolidateMemo
 
     public ConsolidateMemoriesCommandHandler(
         IEventStore eventStore,
-        IEventBus eventBus,
         IAIProviderFactory aiFactory,
         ILogger<ConsolidateMemoriesCommandHandler> logger)
-        : this(eventStore, eventBus, aiFactory, null!, logger)
+        : this(eventStore, aiFactory, null!, logger)
     {
     }
 
@@ -108,9 +103,9 @@ public class ConsolidateMemoriesCommandHandler : IRequestHandler<ConsolidateMemo
         }
 
         var streamId = $"memory-{aggregate.Id.Value}";
+        var outboxMessages = EventOutboxMessageFactory.Create(uncommittedEvents);
 
-        await _eventStore.AppendEventsAsync(streamId, uncommittedEvents, 0, cancellationToken);
-        await _eventBus.PublishAsync(uncommittedEvents, cancellationToken);
+        await _eventStore.AppendEventsWithOutboxAsync(streamId, uncommittedEvents, 0, outboxMessages, cancellationToken);
         aggregate.ClearUncommittedEvents();
 
         return aggregate.Id.Value;

@@ -4,7 +4,6 @@ using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Domains.Enums;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
-using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using PersonalAIAssistant.Memory.Core.Domains.ValueObjects;
 using PersonalAIAssistant.Memory.Events;
 
@@ -13,18 +12,15 @@ namespace PersonalAIAssistant.Memory.Business.Handlers;
 public class AddMemoryCommandHandler : IRequestHandler<AddMemoryCommand, Guid>
 {
     private readonly IEventStore _eventStore;
-    private readonly IEventBus _eventBus;
     private readonly ITextChunker _chunker;
     private readonly Microsoft.Extensions.Options.IOptions<PersonalAIAssistant.Memory.Core.Models.AiProviderOptions> _options;
 
     public AddMemoryCommandHandler(
         IEventStore eventStore,
-        IEventBus eventBus,
         ITextChunker chunker,
         Microsoft.Extensions.Options.IOptions<PersonalAIAssistant.Memory.Core.Models.AiProviderOptions> options)
     {
         _eventStore = eventStore;
-        _eventBus = eventBus;
         _chunker = chunker;
         _options = options;
     }
@@ -100,14 +96,7 @@ public class AddMemoryCommandHandler : IRequestHandler<AddMemoryCommand, Guid>
                 continue;
             }
 
-            // Create outbox messages for each event so they can be published reliably by the outbox dispatcher
-            var outboxMessages = uncommittedEvents.Select(evt => new PersonalAIAssistant.Memory.Core.Messages.OutboxMessage
-            {
-                MessageId = evt.EventId,
-                MessageType = evt.GetType().Name,
-                Payload = System.Text.Json.JsonSerializer.Serialize(evt, evt.GetType()),
-                OccurredAt = DateTime.UtcNow
-            }).ToList();
+            var outboxMessages = EventOutboxMessageFactory.Create(uncommittedEvents);
 
             await _eventStore.AppendEventsWithOutboxAsync(streamId, uncommittedEvents, 0, outboxMessages, cancellationToken);
             allEvents.AddRange(uncommittedEvents);

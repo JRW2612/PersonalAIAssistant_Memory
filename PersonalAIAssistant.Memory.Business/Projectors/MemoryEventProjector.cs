@@ -38,8 +38,7 @@ public class MemoryEventProjector : IMemoryEventHandler
 
     public async Task Handle(MemoryAddedEvent evt, CancellationToken ct)
     {
-        if (evt == null) return;
-        if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+        if (evt == null || !await CanApplyEventAsync(evt, ct)) return;
 
         var summary = evt.RawText?.Length > 300 ? evt.RawText[..300] + "..." : evt.RawText ?? string.Empty;
         var model = new MemoryReadModel
@@ -50,7 +49,8 @@ public class MemoryEventProjector : IMemoryEventHandler
             TokenCount = CountTokens(summary),
             Archived = false,
             Importance = Enum.TryParse<MemoryImportance>(evt.Importance, ignoreCase: true, out var imp) ? imp : MemoryImportance.Medium,
-            CreatedAt = evt.Timestamp
+            CreatedAt = evt.Timestamp,
+            Version = evt.Version
         };
 
         await _readRepo.UpsertAsync(model, ct);
@@ -59,13 +59,16 @@ public class MemoryEventProjector : IMemoryEventHandler
 
     public async Task Handle(MemoryUpdatedEvent evt, CancellationToken ct)
     {
-        if (evt == null) return;
-        if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+        if (evt == null || !await CanApplyEventAsync(evt, ct)) return;
 
         if (evt.UpdatedFields != null && evt.UpdatedFields.TryGetValue("RawText", out var newText))
         {
             var summary = newText.Length > 300 ? newText[..300] + "..." : newText;
-            await UpsertSummaryAsync(evt.AggregateId, evt.UserId, summary, evt.Timestamp, ct);
+            await UpsertSummaryAsync(evt.AggregateId, evt.UserId, summary, evt.Timestamp, evt.Version, ct);
+        }
+        else
+        {
+            await AdvanceVersionAsync(evt.AggregateId, evt.UserId, evt.Timestamp, evt.Version, ct);
         }
 
         await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
@@ -73,36 +76,33 @@ public class MemoryEventProjector : IMemoryEventHandler
 
     public async Task Handle(MemoryCompressedEvent evt, CancellationToken ct)
     {
-        if (evt == null) return;
-        if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+        if (evt == null || !await CanApplyEventAsync(evt, ct)) return;
 
         var summary = evt.CompressedText ?? string.Empty;
-        await UpsertSummaryAsync(evt.AggregateId, evt.UserId, summary, evt.Timestamp, ct);
+        await UpsertSummaryAsync(evt.AggregateId, evt.UserId, summary, evt.Timestamp, evt.Version, ct);
         await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
     }
 
     public async Task Handle(MemoryConsolidatedEvent evt, CancellationToken ct)
     {
-        if (evt == null) return;
-        if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+        if (evt == null || !await CanApplyEventAsync(evt, ct)) return;
 
         var summary = evt.ConsolidatedText ?? string.Empty;
-        await UpsertSummaryAsync(evt.AggregateId, evt.UserId, summary, evt.Timestamp, ct);
+        await UpsertSummaryAsync(evt.AggregateId, evt.UserId, summary, evt.Timestamp, evt.Version, ct);
         await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
     }
 
     public async Task Handle(MemoryIndexedEvent evt, CancellationToken ct)
     {
-        if (evt == null) return;
-        if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+        if (evt == null || !await CanApplyEventAsync(evt, ct)) return;
 
+        await AdvanceVersionAsync(evt.AggregateId, evt.UserId, evt.Timestamp, evt.Version, ct);
         await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
     }
 
     public async Task Handle(MemoryDeletedEvent evt, CancellationToken ct)
     {
-        if (evt == null) return;
-        if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+        if (evt == null || !await CanApplyEventAsync(evt, ct)) return;
 
         var model = new MemoryReadModel
         {
@@ -111,7 +111,8 @@ public class MemoryEventProjector : IMemoryEventHandler
             Summary = string.Empty,
             TokenCount = 0,
             Archived = true,
-            CreatedAt = evt.Timestamp
+            CreatedAt = evt.Timestamp,
+            Version = evt.Version
         };
 
         await _readRepo.UpsertAsync(model, ct);
@@ -120,15 +121,15 @@ public class MemoryEventProjector : IMemoryEventHandler
 
     public async Task Handle(MemoryArchivedEvent evt, CancellationToken ct)
     {
-        if (evt == null) return;
-        if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+        if (evt == null || !await CanApplyEventAsync(evt, ct)) return;
 
         var model = new MemoryReadModel
         {
             MemoryId = evt.AggregateId,
             UserId = evt.UserId ?? string.Empty,
             Archived = true,
-            CreatedAt = evt.Timestamp
+            CreatedAt = evt.Timestamp,
+            Version = evt.Version
         };
 
         await _readRepo.UpsertAsync(model, ct);
@@ -137,16 +138,15 @@ public class MemoryEventProjector : IMemoryEventHandler
 
     public async Task Handle(SnapshotCreatedEvent evt, CancellationToken ct)
     {
-        if (evt == null) return;
-        if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+        if (evt == null || !await CanApplyEventAsync(evt, ct)) return;
 
+        await AdvanceVersionAsync(evt.AggregateId, evt.UserId, evt.Timestamp, evt.Version, ct);
         await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
     }
 
     public async Task Handle(TemporalFactAssertedEvent evt, CancellationToken ct)
     {
-        if (evt == null) return;
-        if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+        if (evt == null || !await CanApplyEventAsync(evt, ct)) return;
 
         var fact = new TemporalFact(
             Id: evt.FactId,
@@ -160,15 +160,16 @@ public class MemoryEventProjector : IMemoryEventHandler
             Source: evt.Source);
 
         await _temporalFactRepo.UpsertFactAsync(fact, evt.UserId ?? string.Empty, ct);
+        await AdvanceVersionAsync(evt.AggregateId, evt.UserId, evt.Timestamp, evt.Version, ct);
         await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
     }
 
     public async Task Handle(TemporalFactInvalidatedEvent evt, CancellationToken ct)
     {
-        if (evt == null) return;
-        if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+        if (evt == null || !await CanApplyEventAsync(evt, ct)) return;
 
         await _temporalFactRepo.InvalidateFactAsync(evt.UserId ?? string.Empty, evt.Subject, evt.Predicate, evt.InvalidatedAtUtc, ct);
+        await AdvanceVersionAsync(evt.AggregateId, evt.UserId, evt.Timestamp, evt.Version, ct);
         await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
     }
 
@@ -193,7 +194,7 @@ public class MemoryEventProjector : IMemoryEventHandler
                 foreach (var evt in ordered)
                 {
                     token.ThrowIfCancellationRequested();
-                    await ApplyEventIfNotProcessedAsync(evt, token);
+                    await ApplyEventCoreAsync(evt, token);
                 }
             }, ct);
             return;
@@ -202,7 +203,7 @@ public class MemoryEventProjector : IMemoryEventHandler
         foreach (var evt in ordered)
         {
             ct.ThrowIfCancellationRequested();
-            await ApplyEventIfNotProcessedAsync(evt, ct);
+            await ApplyEventCoreAsync(evt, ct);
         }
     }
 
@@ -211,7 +212,19 @@ public class MemoryEventProjector : IMemoryEventHandler
     private async Task ApplyEventIfNotProcessedAsync(MemoryEvent evt, CancellationToken ct)
     {
         if (evt == null) return;
-        if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return;
+
+        if (_readRepo is ITransactionalReadModelRepository transactional)
+        {
+            await transactional.ExecuteInTransactionAsync(token => ApplyEventCoreAsync(evt, token), ct);
+            return;
+        }
+
+        await ApplyEventCoreAsync(evt, ct);
+    }
+
+    private async Task ApplyEventCoreAsync(MemoryEvent evt, CancellationToken ct)
+    {
+        if (evt == null) return;
 
         switch (evt)
         {
@@ -226,18 +239,35 @@ public class MemoryEventProjector : IMemoryEventHandler
             case TemporalFactAssertedEvent factAsserted: await Handle(factAsserted, ct); break;
             case TemporalFactInvalidatedEvent factInvalidated: await Handle(factInvalidated, ct); break;
             default:
+                if (!await CanApplyEventAsync(evt, ct)) return;
+                await AdvanceVersionAsync(evt.AggregateId, evt.UserId, evt.Timestamp, evt.Version, ct);
                 await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
                 break;
         }
     }
 
-    private static int CountTokens(string text)
+    private async Task<bool> CanApplyEventAsync(MemoryEvent evt, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(text)) return 0;
-        return text.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries).Length;
+        if (await _idempotencyStore.HasProcessedAsync(evt.AggregateId, evt.Version, ct)) return false;
+
+        var model = (await _readRepo.GetMemoriesByIdsAsync(new[] { evt.AggregateId }, ct)).FirstOrDefault();
+        var currentVersion = model?.Version ?? 0;
+        if (evt.Version <= currentVersion)
+        {
+            await _idempotencyStore.MarkProcessedAsync(evt.AggregateId, evt.Version, ct);
+            return false;
+        }
+
+        if (evt.Version != currentVersion + 1)
+        {
+            throw new InvalidOperationException(
+                $"Cannot project aggregate {evt.AggregateId} version {evt.Version}; expected version {currentVersion + 1}.");
+        }
+
+        return true;
     }
 
-    private async Task UpsertSummaryAsync(Guid memoryId, string? userId, string summary, DateTime timestamp, CancellationToken ct)
+    private async Task AdvanceVersionAsync(Guid memoryId, string? userId, DateTime timestamp, int version, CancellationToken ct)
     {
         var model = (await _readRepo.GetMemoriesByIdsAsync(new[] { memoryId }, ct)).FirstOrDefault()
             ?? new MemoryReadModel
@@ -247,12 +277,36 @@ public class MemoryEventProjector : IMemoryEventHandler
                 CreatedAt = timestamp
             };
 
+        if (string.IsNullOrEmpty(model.UserId) && !string.IsNullOrEmpty(userId))
+            model.UserId = userId;
+        model.Version = version;
+        await _readRepo.UpsertAsync(model, ct);
+    }
+
+    private static int CountTokens(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return 0;
+        return text.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries).Length;
+    }
+
+    private async Task UpsertSummaryAsync(Guid memoryId, string? userId, string summary, DateTime timestamp, int version, CancellationToken ct)
+    {
+        var model = (await _readRepo.GetMemoriesByIdsAsync(new[] { memoryId }, ct)).FirstOrDefault()
+            ?? new MemoryReadModel
+            {
+                MemoryId = memoryId,
+                UserId = userId ?? string.Empty,
+                CreatedAt = timestamp,
+                Version = version
+            };
+
         // Summary events update content; ownership, importance, archive state, and creation time
         // belong to other event types and must survive this projection.
         if (string.IsNullOrEmpty(model.UserId) && !string.IsNullOrEmpty(userId))
             model.UserId = userId;
         model.Summary = summary;
         model.TokenCount = CountTokens(summary);
+        model.Version = version;
 
         await _readRepo.UpsertAsync(model, ct);
     }

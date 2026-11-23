@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using PersonalAIAssistant.Memory.Business.Handlers;
 using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
 using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
@@ -42,13 +43,12 @@ public class RetentionWorker : BackgroundService
                     var lockStore = scope.ServiceProvider.GetRequiredService<IProcessingLockStore>();
                     var readRepo = scope.ServiceProvider.GetRequiredService<IReadModelRepository>();
                     var eventStore = scope.ServiceProvider.GetRequiredService<IEventStore>();
-                    var eventBus = scope.ServiceProvider.GetRequiredService<IEventBus>();
 
-                    await ProcessExpiredMemoriesAsync(retentionStore, lockStore, eventStore, eventBus, stoppingToken);
+                    await ProcessExpiredMemoriesAsync(retentionStore, lockStore, eventStore, stoppingToken);
 
                     if (_opts.HardDeleteEnabled)
                     {
-                        await ProcessArchivedMemoriesAsync(retentionStore, lockStore, eventStore, eventBus, stoppingToken);
+                        await ProcessArchivedMemoriesAsync(retentionStore, lockStore, eventStore, stoppingToken);
                     }
 
                     await EnforceCapacityLimitAsync(readRepo, "default", stoppingToken);
@@ -74,13 +74,12 @@ public class RetentionWorker : BackgroundService
         IRetentionQueryStore retentionStore,
         IProcessingLockStore lockStore,
         IEventStore eventStore,
-        IEventBus eventBus,
         CancellationToken ct)
     {
         var expired = await retentionStore.GetExpiredMemoriesAsync(_opts.TtlDays, ct);
         foreach (var candidate in expired)
         {
-            await ArchiveMemoryAsync(lockStore, eventStore, eventBus, candidate, "TTL expired", ct);
+            await ArchiveMemoryAsync(lockStore, eventStore, candidate, "TTL expired", ct);
         }
     }
 
@@ -88,13 +87,12 @@ public class RetentionWorker : BackgroundService
         IRetentionQueryStore retentionStore,
         IProcessingLockStore lockStore,
         IEventStore eventStore,
-        IEventBus eventBus,
         CancellationToken ct)
     {
         var archived = await retentionStore.GetArchivedMemoriesAsync(_opts.ArchiveDays, ct);
         foreach (var candidate in archived)
         {
-            await DeleteMemoryAsync(lockStore, eventStore, eventBus, candidate, "Hard delete after archive period", ct);
+            await DeleteMemoryAsync(lockStore, eventStore, candidate, "Hard delete after archive period", ct);
         }
     }
 
@@ -111,7 +109,6 @@ public class RetentionWorker : BackgroundService
     private async Task ArchiveMemoryAsync(
         IProcessingLockStore lockStore,
         IEventStore eventStore,
-        IEventBus eventBus,
         ReadModelCandidate candidate,
         string reason,
         CancellationToken ct)
@@ -139,8 +136,8 @@ public class RetentionWorker : BackgroundService
             if (newEvents.Any())
             {
                 var expectedVersion = aggregate.Version - newEvents.Count;
-                await eventStore.AppendEventsAsync(candidate.StreamId, newEvents, expectedVersion, ct);
-                await eventBus.PublishAsync(newEvents, ct);
+                var outboxMessages = EventOutboxMessageFactory.Create(newEvents);
+                await eventStore.AppendEventsWithOutboxAsync(candidate.StreamId, newEvents, expectedVersion, outboxMessages, ct);
             }
 
             await lockStore.MarkProcessedAsync(candidate.MemoryId, ct);
@@ -155,7 +152,6 @@ public class RetentionWorker : BackgroundService
     private async Task DeleteMemoryAsync(
         IProcessingLockStore lockStore,
         IEventStore eventStore,
-        IEventBus eventBus,
         ReadModelCandidate candidate,
         string reason,
         CancellationToken ct)
@@ -183,8 +179,8 @@ public class RetentionWorker : BackgroundService
             if (newEvents.Any())
             {
                 var expectedVersion = aggregate.Version - newEvents.Count;
-                await eventStore.AppendEventsAsync(candidate.StreamId, newEvents, expectedVersion, ct);
-                await eventBus.PublishAsync(newEvents, ct);
+                var outboxMessages = EventOutboxMessageFactory.Create(newEvents);
+                await eventStore.AppendEventsWithOutboxAsync(candidate.StreamId, newEvents, expectedVersion, outboxMessages, ct);
             }
 
             await lockStore.MarkProcessedAsync(candidate.MemoryId, ct);

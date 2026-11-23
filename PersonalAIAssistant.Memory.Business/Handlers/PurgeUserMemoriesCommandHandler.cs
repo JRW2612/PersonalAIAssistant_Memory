@@ -4,7 +4,6 @@ using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
-using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using PersonalAIAssistant.Memory.Core.Interfaces.Persistence;
 using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 using PersonalAIAssistant.Memory.Events;
@@ -21,7 +20,6 @@ public sealed class PurgeUserMemoriesCommandHandler
     private readonly IReadModelRepository _readRepo;
     private readonly IRetentionQueryStore _retentionStore;
     private readonly IEventStore _eventStore;
-    private readonly IEventBus _eventBus;
     private readonly IVectorMemoryRepository _vectorRepo;
     private readonly IUserContext _userContext;
     private readonly ILogger<PurgeUserMemoriesCommandHandler> _logger;
@@ -30,7 +28,6 @@ public sealed class PurgeUserMemoriesCommandHandler
         IReadModelRepository readRepo,
         IRetentionQueryStore retentionStore,
         IEventStore eventStore,
-        IEventBus eventBus,
         IVectorMemoryRepository vectorRepo,
         IUserContext userContext,
         ILogger<PurgeUserMemoriesCommandHandler> logger)
@@ -38,7 +35,6 @@ public sealed class PurgeUserMemoriesCommandHandler
         _readRepo = readRepo;
         _retentionStore = retentionStore;
         _eventStore = eventStore;
-        _eventBus = eventBus;
         _vectorRepo = vectorRepo;
         _userContext = userContext;
         _logger = logger;
@@ -83,8 +79,8 @@ public sealed class PurgeUserMemoriesCommandHandler
                 if (newEvents.Any())
                 {
                     var expectedVersion = aggregate.Version - newEvents.Count;
-                    await _eventStore.AppendEventsAsync(streamId, newEvents, expectedVersion, cancellationToken);
-                    await _eventBus.PublishAsync(newEvents, cancellationToken);
+                    var outboxMessages = EventOutboxMessageFactory.Create(newEvents);
+                    await _eventStore.AppendEventsWithOutboxAsync(streamId, newEvents, expectedVersion, outboxMessages, cancellationToken);
                 }
 
                 await _vectorRepo.DeleteAsync(memory.MemoryId, cancellationToken);
@@ -110,9 +106,13 @@ public sealed class PurgeUserMemoriesCommandHandler
             PurgeReason = request.PurgeReason,
             MemoryCount = purgedCount,
             UserId = request.RequestedByUserId,
+            Version = 1,
             EventType = nameof(UserMemoriesPurgedEvent)
         };
-        await _eventBus.PublishAsync(new[] { (MemoryEvent)purgeAuditEvent }, cancellationToken);
+        var auditStreamId = $"memory-{purgeAuditEvent.AggregateId}";
+        var auditEvents = new MemoryEvent[] { purgeAuditEvent };
+        var auditOutboxMessages = EventOutboxMessageFactory.Create(auditEvents);
+        await _eventStore.AppendEventsWithOutboxAsync(auditStreamId, auditEvents, 0, auditOutboxMessages, cancellationToken);
 
         _logger.LogInformation(
             "[GDPR] Purged {Count} memories for user {TargetUserId}, requested by {RequestedBy}, reason: {Reason}",

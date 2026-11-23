@@ -14,6 +14,7 @@ namespace PersonalAIAssistant.Memory.Core.Entities
         public bool Archived { get; set; }
         public DateTime? LastProcessedAt { get; set; }
         public bool IsEncrypted { get; set; }
+        public int Version { get; set; }
     }
 }
 

@@ -10,6 +10,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Context
 
         public DbSet<MemoryReadModelEntity> MemoryReadModels { get; set; } = null!;
         public DbSet<ProcessedEventEntity> ProcessedEvents { get; set; } = null!;
+        public DbSet<EmbeddingIndexingEntity> EmbeddingIndexingRecords { get; set; } = null!;
         public DbSet<ProcessingLockEntity> ProcessingLocks { get; set; } = null!;
         public DbSet<ProviderConnectionEntity> ProviderConnections { get; set; } = null!;
         public DbSet<ProviderAuditLogEntity> ProviderAuditLogs { get; set; } = null!;
@@ -30,6 +31,14 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Context
                 b.Property(x => x.Importance).IsRequired().HasConversion<int>();
                 b.Property(x => x.CreatedAt).IsRequired();
                 b.Property(x => x.Archived).IsRequired();
+                b.Property(x => x.Version).IsRequired();
+            });
+
+            modelBuilder.Entity<EmbeddingIndexingEntity>(b =>
+            {
+                b.HasKey(x => new { x.AggregateId, x.EventVersion });
+                b.Property(x => x.StartedAtUtc).IsRequired();
+                b.Property(x => x.Failure).HasMaxLength(4000);
             });
 
             modelBuilder.Entity<ProcessedEventEntity>(b =>

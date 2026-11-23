@@ -7,7 +7,6 @@ using PersonalAIAssistant.Memory.Business.Handlers;
 using PersonalAIAssistant.Memory.Core.Domains.Enums;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
-using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using PersonalAIAssistant.Memory.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -20,14 +19,12 @@ namespace PersonalAIAssistant.Memory.Tests.Handlers
     public class AddMemoryCommandHandlerTests
     {
         private readonly Mock<IEventStore> _eventStoreMock;
-        private readonly Mock<IEventBus> _eventBusMock;
         private readonly Mock<ITextChunker> _chunkerMock;
         private readonly Mock<IOptions<AiProviderOptions>> _optionsMock;
 
         public AddMemoryCommandHandlerTests()
         {
             _eventStoreMock = new Mock<IEventStore>();
-            _eventBusMock = new Mock<IEventBus>();
             _chunkerMock = new Mock<ITextChunker>();
             _optionsMock = new Mock<IOptions<AiProviderOptions>>();
 
@@ -38,12 +35,11 @@ namespace PersonalAIAssistant.Memory.Tests.Handlers
         }
 
         [Fact]
-        public async Task Handle_Should_Append_And_Publish_Events_Successfully()
+        public async Task Handle_Should_Append_Events_To_Outbox()
         {
             // Arrange
             var handler = new AddMemoryCommandHandler(
                 _eventStoreMock.Object,
-                _eventBusMock.Object,
                 _chunkerMock.Object,
                 _optionsMock.Object
             );
@@ -69,11 +65,6 @@ namespace PersonalAIAssistant.Memory.Tests.Handlers
                 It.IsAny<IReadOnlyList<PersonalAIAssistant.Memory.Core.Messages.OutboxMessage>>(),
                 It.IsAny<CancellationToken>()
             ), Times.Once);
-
-            _eventBusMock.Verify(b => b.PublishAsync(
-                It.IsAny<IEnumerable<MemoryEvent>>(),
-                It.IsAny<CancellationToken>()
-            ), Times.Never);
         }
 
         [Fact]
@@ -82,7 +73,6 @@ namespace PersonalAIAssistant.Memory.Tests.Handlers
             // Arrange
             var handler = new AddMemoryCommandHandler(
                 _eventStoreMock.Object,
-                _eventBusMock.Object,
                 _chunkerMock.Object,
                 _optionsMock.Object
             );

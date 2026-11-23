@@ -10,7 +10,6 @@ using PersonalAIAssistant.Memory.Core.Domains.Enums;
 using PersonalAIAssistant.Memory.Core.DTOs;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
-using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using PersonalAIAssistant.Memory.Core.Models;
 using PersonalAIAssistant.Memory.Infrastructure.Extensions;
 
@@ -133,7 +132,6 @@ builder.Services.AddMemoryBusinessServices(
 // 4. Register In-Memory Stores
 builder.Services.AddSingleton<IEventStore, PersonalAIAssistant.Memory.Infrastructure.Mongo.InMemoryEventStore>();
 builder.Services.AddSingleton<ISnapshotRepository, PersonalAIAssistant.Memory.Infrastructure.Mongo.InMemorySnapshotRepository>();
-builder.Services.AddScoped<IEventBus, PersonalAIAssistant.Memory.Infrastructure.InMemory.InMemoryEventBus>();
 builder.Services.AddSingleton<IEmbeddingService, MockEmbeddingService>();
 builder.Services.AddSingleton<IVectorMemoryRepository, InMemoryVectorRepo>();
 builder.Services.AddSingleton<PersonalAIAssistant.Memory.Core.Interfaces.Security.IUserContext>(demoUserContext);

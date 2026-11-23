@@ -11,15 +11,15 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Messaging
         // Background worker that reads pending outbox documents from Mongo and publishes them
         // to RabbitMQ via MassTransit. Keeps running until the host shuts down.
         private readonly IMongoDatabase _database;
-        private readonly IPublishEndpoint _publishEndpoint;
+        private readonly ISendEndpointProvider _sendEndpointProvider;
         private readonly ILogger<OutboxDispatcherService> _logger;
         private readonly int _batchSize = 20;
         private readonly TimeSpan _delay = TimeSpan.FromSeconds(2);
 
-        public OutboxDispatcherService(IMongoDatabase database, IPublishEndpoint publishEndpoint, ILogger<OutboxDispatcherService> logger)
+        public OutboxDispatcherService(IMongoDatabase database, ISendEndpointProvider sendEndpointProvider, ILogger<OutboxDispatcherService> logger)
         {
             _database = database;
-            _publishEndpoint = publishEndpoint;
+            _sendEndpointProvider = sendEndpointProvider;
             _logger = logger;
         }
 
@@ -48,20 +48,13 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Messaging
                             var eventType = typeof(MemoryEvent).Assembly.GetTypes().FirstOrDefault(t => t.Name == doc.MessageType);
                             if (eventType == null)
                             {
-                                _logger.LogWarning("Unknown outbox message type: {Type}", doc.MessageType);
-                                // Mark it as dispatched so we don't keep retrying an unrecognizable type.
-                                var update = Builders<PersonalAIAssistant.Memory.Infrastructure.Mongo.OutboxDocument>.Update.Set(d => d.DispatchedAt, DateTime.UtcNow);
-                                await collection.UpdateOneAsync(Builders<PersonalAIAssistant.Memory.Infrastructure.Mongo.OutboxDocument>.Filter.Eq(d => d.Id, doc.Id), update, cancellationToken: stoppingToken);
-                                continue;
+                                throw new InvalidOperationException($"Unknown outbox message type '{doc.MessageType}' for message {doc.MessageId}.");
                             }
 
                             var evt = (MemoryEvent?)System.Text.Json.JsonSerializer.Deserialize(doc.Payload, eventType);
                             if (evt == null)
                             {
-                                _logger.LogWarning("Couldn't deserialize outbox payload for message {Id}. Marking as dispatched.", doc.MessageId);
-                                var update = Builders<PersonalAIAssistant.Memory.Infrastructure.Mongo.OutboxDocument>.Update.Set(d => d.DispatchedAt, DateTime.UtcNow);
-                                await collection.UpdateOneAsync(Builders<PersonalAIAssistant.Memory.Infrastructure.Mongo.OutboxDocument>.Filter.Eq(d => d.Id, doc.Id), update, cancellationToken: stoppingToken);
-                                continue;
+                                throw new InvalidOperationException($"Failed to deserialize Mongo outbox payload for message {doc.MessageId}.");
                             }
 
                             if (string.IsNullOrEmpty(evt.Traceparent))
@@ -69,7 +62,9 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Messaging
                                 evt.Traceparent = PersonalAIAssistant.Memory.Core.Observability.W3CTraceContext.Create().ToString();
                             }
 
-                            await _publishEndpoint.Publish((object)evt, sendContext =>
+                            var endpoint = await _sendEndpointProvider.GetSendEndpoint(
+                                new Uri($"queue:{MemoryEventPartitioning.GetQueueName(evt.AggregateId)}"));
+                            await endpoint.Send((object)evt, sendContext =>
                             {
                                 sendContext.Headers.Set(PersonalAIAssistant.Memory.Core.Observability.W3CTraceContext.HeaderName, evt.Traceparent);
                             }, stoppingToken);

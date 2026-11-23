@@ -12,7 +12,6 @@ using PersonalAIAssistant.Memory.Api.Middleware;
 using PersonalAIAssistant.Memory.Business.Extensions;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
-using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using PersonalAIAssistant.Memory.Infrastructure.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -293,7 +292,6 @@ if (useInMemory)
 {
     builder.Services.AddSingleton<IEventStore, PersonalAIAssistant.Memory.Infrastructure.Mongo.InMemoryEventStore>();
     builder.Services.AddSingleton<ISnapshotRepository, PersonalAIAssistant.Memory.Infrastructure.Mongo.InMemorySnapshotRepository>();
-    builder.Services.AddScoped<IEventBus, PersonalAIAssistant.Memory.Infrastructure.InMemory.InMemoryEventBus>();
     builder.Services.AddSingleton<IVectorMemoryRepository, PersonalAIAssistant.Memory.Infrastructure.InMemory.InMemoryVectorMemoryRepository>();
 }
 else

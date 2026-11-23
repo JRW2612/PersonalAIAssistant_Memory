@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using PersonalAIAssistant.Memory.Business.Handlers;
 using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Exceptions;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
@@ -82,7 +83,6 @@ public class ConsolidationWorker : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var lockStore = scope.ServiceProvider.GetRequiredService<IProcessingLockStore>();
         var eventStore = scope.ServiceProvider.GetRequiredService<IEventStore>();
-        var eventBus = scope.ServiceProvider.GetRequiredService<IEventBus>();
         var compressionService = scope.ServiceProvider.GetRequiredService<ICompressionService>();
 
         if (!await lockStore.TryMarkProcessingAsync(candidate.MemoryId, ct))
@@ -113,8 +113,8 @@ public class ConsolidationWorker : BackgroundService
 
             await workerPipeline.ExecuteAsync(async token =>
             {
-                await eventStore.AppendEventsAsync(candidate.StreamId, newEvents, expectedVersion, token);
-                await eventBus.PublishAsync(newEvents, token);
+                var outboxMessages = EventOutboxMessageFactory.Create(newEvents);
+                await eventStore.AppendEventsWithOutboxAsync(candidate.StreamId, newEvents, expectedVersion, outboxMessages, token);
                 await lockStore.MarkProcessedAsync(candidate.MemoryId, token);
             }, ct);
 

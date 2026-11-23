@@ -30,6 +30,25 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
 {
     public static class InfrastructureServiceExtensions
     {
+        private static void ConfigureMemoryEventConsumers(
+            IRabbitMqReceiveEndpointConfigurator endpoint,
+            IRegistrationContext context)
+        {
+            endpoint.ConfigureConsumer<MemoryEventConsumer<MemoryAddedEvent>>(context);
+            endpoint.ConfigureConsumer<MemoryEventConsumer<MemoryUpdatedEvent>>(context);
+            endpoint.ConfigureConsumer<MemoryEventConsumer<MemoryCompressedEvent>>(context);
+            endpoint.ConfigureConsumer<MemoryEventConsumer<MemoryConsolidatedEvent>>(context);
+            endpoint.ConfigureConsumer<MemoryEventConsumer<MemoryIndexedEvent>>(context);
+            endpoint.ConfigureConsumer<MemoryEventConsumer<MemoryArchivedEvent>>(context);
+            endpoint.ConfigureConsumer<MemoryEventConsumer<MemoryDeletedEvent>>(context);
+            endpoint.ConfigureConsumer<MemoryEventConsumer<SnapshotCreatedEvent>>(context);
+            endpoint.ConfigureConsumer<MemoryEventConsumer<TemporalFactAssertedEvent>>(context);
+            endpoint.ConfigureConsumer<MemoryEventConsumer<TemporalFactInvalidatedEvent>>(context);
+            endpoint.ConfigureConsumer<MemoryEventConsumer<LegalHoldAppliedEvent>>(context);
+            endpoint.ConfigureConsumer<MemoryEventConsumer<LegalHoldReleasedEvent>>(context);
+            endpoint.ConfigureConsumer<MemoryEventConsumer<UserMemoriesPurgedEvent>>(context);
+        }
+
         public static IServiceCollection AddMemoryInfrastructureServices(
             this IServiceCollection services,
             Action<DbContextOptionsBuilder> configureDbContext,
@@ -66,6 +85,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.AddScoped<SqlReadModelRepository>();
             services.AddScoped<IReadModelRepository>(sp => sp.GetRequiredService<SqlReadModelRepository>());
             services.AddScoped<IEventIdempotencyStore>(sp => sp.GetRequiredService<SqlReadModelRepository>());
+            services.AddScoped<IEmbeddingIndexingStore>(sp => sp.GetRequiredService<SqlReadModelRepository>());
             services.AddScoped<IProcessingLockStore>(sp => sp.GetRequiredService<SqlReadModelRepository>());
             services.AddScoped<IRetentionQueryStore>(sp => sp.GetRequiredService<SqlReadModelRepository>());
             services.AddScoped<ITransactionalReadModelRepository>(sp => sp.GetRequiredService<SqlReadModelRepository>());
@@ -300,12 +320,18 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
                 services.AddMassTransit(x =>
                 {
                     x.AddConsumer<MemoryEventConsumer<MemoryAddedEvent>>();
+                    x.AddConsumer<MemoryEventConsumer<MemoryUpdatedEvent>>();
                     x.AddConsumer<MemoryEventConsumer<MemoryCompressedEvent>>();
                     x.AddConsumer<MemoryEventConsumer<MemoryConsolidatedEvent>>();
                     x.AddConsumer<MemoryEventConsumer<MemoryIndexedEvent>>();
                     x.AddConsumer<MemoryEventConsumer<MemoryArchivedEvent>>();
                     x.AddConsumer<MemoryEventConsumer<MemoryDeletedEvent>>();
                     x.AddConsumer<MemoryEventConsumer<SnapshotCreatedEvent>>();
+                    x.AddConsumer<MemoryEventConsumer<TemporalFactAssertedEvent>>();
+                    x.AddConsumer<MemoryEventConsumer<TemporalFactInvalidatedEvent>>();
+                    x.AddConsumer<MemoryEventConsumer<LegalHoldAppliedEvent>>();
+                    x.AddConsumer<MemoryEventConsumer<LegalHoldReleasedEvent>>();
+                    x.AddConsumer<MemoryEventConsumer<UserMemoriesPurgedEvent>>();
 
                     x.UsingRabbitMq((context, cfg) =>
                     {
@@ -319,7 +345,22 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
                             h.Password(rabbitPass);
                         });
 
-                        cfg.ConfigureEndpoints(context);
+                        for (var partition = 0; partition < MemoryEventPartitioning.PartitionCount; partition++)
+                        {
+                            cfg.ReceiveEndpoint(MemoryEventPartitioning.GetQueueName(partition), endpoint =>
+                            {
+                                endpoint.PrefetchCount = 1;
+                                endpoint.ConcurrentMessageLimit = 1;
+                                endpoint.SingleActiveConsumer = true;
+                                endpoint.UseMessageRetry(retry => retry.Exponential(
+                                    10,
+                                    TimeSpan.FromSeconds(1),
+                                    TimeSpan.FromMinutes(1),
+                                    TimeSpan.FromSeconds(2)));
+
+                                ConfigureMemoryEventConsumers(endpoint, context);
+                            });
+                        }
                     });
                 });
 
@@ -330,8 +371,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
                     options.StopTimeout = TimeSpan.FromSeconds(2);
                 });
 
-                services.AddScoped<IEventBus, RabbitMQEventBus>();
-                // Outbox dispatcher will publish persisted outbox entries to the message broker (RabbitMQ via MassTransit)
+                // Outbox dispatcher sends persisted events to the message broker (RabbitMQ via MassTransit).
                 services.AddHostedService<OutboxDispatcherService>();
             }
 

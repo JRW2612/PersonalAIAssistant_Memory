@@ -12,5 +12,6 @@ namespace PersonalAIAssistant.Memory.Core.Models
         public bool Archived { get; set; }
         public MemoryImportance Importance { get; set; } // enum
         public DateTime CreatedAt { get; set; }
+        public int Version { get; set; }
     }
 }

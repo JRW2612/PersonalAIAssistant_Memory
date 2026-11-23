@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging;
 using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Core.Domains;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
-using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using PersonalAIAssistant.Memory.Events;
 
 namespace PersonalAIAssistant.Memory.Business.Handlers;
@@ -11,16 +10,13 @@ namespace PersonalAIAssistant.Memory.Business.Handlers;
 public class AssertTemporalFactCommandHandler : IRequestHandler<AssertTemporalFactCommand, Guid>
 {
     private readonly IEventStore _eventStore;
-    private readonly IEventBus _eventBus;
     private readonly ILogger<AssertTemporalFactCommandHandler> _logger;
 
     public AssertTemporalFactCommandHandler(
         IEventStore eventStore,
-        IEventBus eventBus,
         ILogger<AssertTemporalFactCommandHandler> logger)
     {
         _eventStore = eventStore;
-        _eventBus = eventBus;
         _logger = logger;
     }
 
@@ -51,8 +47,8 @@ public class AssertTemporalFactCommandHandler : IRequestHandler<AssertTemporalFa
             return Guid.NewGuid();
         }
 
-        await _eventStore.AppendEventsAsync(streamId, uncommitted, expectedVersion, cancellationToken);
-        await _eventBus.PublishAsync(uncommitted, cancellationToken);
+        var outboxMessages = EventOutboxMessageFactory.Create(uncommitted);
+        await _eventStore.AppendEventsWithOutboxAsync(streamId, uncommitted, expectedVersion, outboxMessages, cancellationToken);
 
         aggregate.ClearUncommittedEvents();
 

@@ -109,12 +109,13 @@ namespace PersonalAIAssistant.Memory.Infrastructure.EF
                 {
                     foreach (var m in outboxMessages)
                     {
+                        var evt = events?.FirstOrDefault(x => x.EventId == m.MessageId);
                         var outEnt = new EfOutboxMessage
                         {
                             MessageId = m.MessageId,
                             MessageType = m.MessageType,
-                            Payload = m.Payload,
-                            OccurredAt = m.OccurredAt,
+                            Payload = evt == null ? m.Payload : System.Text.Json.JsonSerializer.Serialize(evt, evt.GetType()),
+                            OccurredAt = evt?.Timestamp ?? m.OccurredAt,
                             Attempts = 0
                         };
                         _db.OutboxMessages.Add(outEnt);

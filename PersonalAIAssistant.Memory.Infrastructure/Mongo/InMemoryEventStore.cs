@@ -68,8 +68,16 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
             // Store outbox messages in-memory for tests or demo scenarios
             if (outboxMessages != null)
             {
-                foreach (var m in outboxMessages)
-                    _outbox.Add(m);
+                foreach (var message in outboxMessages)
+                {
+                    var evt = events?.FirstOrDefault(x => x.EventId == message.MessageId);
+                    if (evt != null)
+                    {
+                        message.Payload = System.Text.Json.JsonSerializer.Serialize(evt, evt.GetType());
+                        message.OccurredAt = evt.Timestamp;
+                    }
+                    _outbox.Add(message);
+                }
             }
 
             return true;

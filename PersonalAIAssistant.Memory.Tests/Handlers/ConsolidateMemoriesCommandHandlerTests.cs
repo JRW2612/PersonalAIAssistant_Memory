@@ -5,7 +5,6 @@ using PersonalAIAssistant.Memory.Business.Commands;
 using PersonalAIAssistant.Memory.Business.Handlers;
 using PersonalAIAssistant.Memory.Core.Interfaces.AI;
 using PersonalAIAssistant.Memory.Core.Interfaces.EventSourcing;
-using PersonalAIAssistant.Memory.Core.Interfaces.Messaging;
 using PersonalAIAssistant.Memory.Core.Interfaces.Persistence;
 using PersonalAIAssistant.Memory.Core.Models;
 using Xunit;
@@ -15,7 +14,6 @@ namespace PersonalAIAssistant.Memory.Tests.Handlers
     public class ConsolidateMemoriesCommandHandlerTests
     {
         private readonly Mock<IEventStore> _eventStoreMock = new();
-        private readonly Mock<IEventBus> _eventBusMock = new();
         private readonly Mock<IAIProviderFactory> _aiFactoryMock = new();
         private readonly Mock<IReadModelRepository> _readRepoMock = new();
 
@@ -39,7 +37,6 @@ namespace PersonalAIAssistant.Memory.Tests.Handlers
 
             var handler = new ConsolidateMemoriesCommandHandler(
                 _eventStoreMock.Object,
-                _eventBusMock.Object,
                 _aiFactoryMock.Object,
                 _readRepoMock.Object,
                 NullLogger<ConsolidateMemoriesCommandHandler>.Instance);
