@@ -291,6 +291,8 @@ builder.Services.AddSingleton<PersonalAIAssistant.Memory.Core.Interfaces.AI.IAge
 if (useInMemory)
 {
     builder.Services.AddSingleton<IEventStore, PersonalAIAssistant.Memory.Infrastructure.Mongo.InMemoryEventStore>();
+    builder.Services.AddScoped<PersonalAIAssistant.Memory.Core.Interfaces.Messaging.IEventBus, PersonalAIAssistant.Memory.Infrastructure.InMemory.InMemoryEventBus>();
+    builder.Services.AddHostedService<PersonalAIAssistant.Memory.Infrastructure.Messaging.InMemoryOutboxDispatcherService>();
     builder.Services.AddSingleton<ISnapshotRepository, PersonalAIAssistant.Memory.Infrastructure.Mongo.InMemorySnapshotRepository>();
     builder.Services.AddSingleton<IVectorMemoryRepository, PersonalAIAssistant.Memory.Infrastructure.InMemory.InMemoryVectorMemoryRepository>();
 }

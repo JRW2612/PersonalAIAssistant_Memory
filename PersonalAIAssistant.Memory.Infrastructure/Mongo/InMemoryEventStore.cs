@@ -8,7 +8,17 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
     public class InMemoryEventStore : IEventStore
     {
         private readonly ConcurrentDictionary<string, List<MemoryEvent>> _streams = new();
-        private readonly ConcurrentBag<PersonalAIAssistant.Memory.Core.Messages.OutboxMessage> _outbox = new();
+        private readonly ConcurrentQueue<PersonalAIAssistant.Memory.Core.Messages.OutboxMessage> _outbox = new();
+
+        public bool TryPeekOutboxMessage(out PersonalAIAssistant.Memory.Core.Messages.OutboxMessage? message)
+        {
+            return _outbox.TryPeek(out message);
+        }
+
+        public bool TryDequeueOutboxMessage(out PersonalAIAssistant.Memory.Core.Messages.OutboxMessage? message)
+        {
+            return _outbox.TryDequeue(out message);
+        }
 
         public Task AppendEventAsync(string streamId, MemoryEvent memoryEvent, int expectedVersion, CancellationToken ct)
         {
@@ -76,7 +86,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Mongo
                         message.Payload = System.Text.Json.JsonSerializer.Serialize(evt, evt.GetType());
                         message.OccurredAt = evt.Timestamp;
                     }
-                    _outbox.Add(message);
+                    _outbox.Enqueue(message);
                 }
             }
 

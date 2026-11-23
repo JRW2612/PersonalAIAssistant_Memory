@@ -131,6 +131,8 @@ builder.Services.AddMemoryBusinessServices(
 
 // 4. Register In-Memory Stores
 builder.Services.AddSingleton<IEventStore, PersonalAIAssistant.Memory.Infrastructure.Mongo.InMemoryEventStore>();
+builder.Services.AddScoped<PersonalAIAssistant.Memory.Core.Interfaces.Messaging.IEventBus, PersonalAIAssistant.Memory.Infrastructure.InMemory.InMemoryEventBus>();
+builder.Services.AddHostedService<PersonalAIAssistant.Memory.Infrastructure.Messaging.InMemoryOutboxDispatcherService>();
 builder.Services.AddSingleton<ISnapshotRepository, PersonalAIAssistant.Memory.Infrastructure.Mongo.InMemorySnapshotRepository>();
 builder.Services.AddSingleton<IEmbeddingService, MockEmbeddingService>();
 builder.Services.AddSingleton<IVectorMemoryRepository, InMemoryVectorRepo>();
