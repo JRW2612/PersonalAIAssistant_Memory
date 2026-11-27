@@ -126,8 +126,12 @@ builder.Services.AddSwaggerGen(c =>
 // 3. Configure JWT Authentication (SEC-02, SEC-06)
 var jwtSecret = builder.Configuration["Jwt:SecretKey"]
     ?? throw new InvalidOperationException("JWT signing key 'Jwt:SecretKey' is not configured. Set it via environment variables or user-secrets.");
-var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "PersonalAIAssistant.Memory";
-var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "PersonalAIAssistant.Memory.Api";
+var jwtIssuer = !string.IsNullOrWhiteSpace(builder.Configuration["Jwt:Issuer"])
+    ? builder.Configuration["Jwt:Issuer"]!
+    : "PersonalAIAssistant.Memory";
+var jwtAudience = !string.IsNullOrWhiteSpace(builder.Configuration["Jwt:Audience"])
+    ? builder.Configuration["Jwt:Audience"]!
+    : "PersonalAIAssistant.Memory.Api";
 var keyBytes = Encoding.UTF8.GetBytes(jwtSecret);
 
 builder.Services.AddAuthentication(options =>
@@ -211,6 +215,20 @@ builder.Services.AddRateLimiter(options =>
             {
                 TokenLimit = 60,
                 TokensPerPeriod = 60,
+                ReplenishmentPeriod = TimeSpan.FromMinutes(1),
+                AutoReplenishment = true
+            });
+    });
+
+    options.AddPolicy("EnterpriseAuthPolicy", httpContext =>
+    {
+        var clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+        return RateLimitPartition.GetTokenBucketLimiter(
+            $"sso:{clientIp}",
+            _ => new TokenBucketRateLimiterOptions
+            {
+                TokenLimit = 10,
+                TokensPerPeriod = 10,
                 ReplenishmentPeriod = TimeSpan.FromMinutes(1),
                 AutoReplenishment = true
             });

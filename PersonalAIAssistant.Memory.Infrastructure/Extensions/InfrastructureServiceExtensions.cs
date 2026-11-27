@@ -241,6 +241,7 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             
             // ── FIPS 140-2 Level 3 HSM & Cloud Key Vault + Envelope Encryption ──
             services.Configure<PersonalAIAssistant.Memory.Core.Models.Security.HsmOptions>(configuration.GetSection(PersonalAIAssistant.Memory.Core.Models.Security.HsmOptions.SectionName));
+            services.Configure<PersonalAIAssistant.Memory.Core.Models.Security.JwtOptions>(configuration.GetSection(PersonalAIAssistant.Memory.Core.Models.Security.JwtOptions.SectionName));
             services.Configure<PersonalAIAssistant.Memory.Core.Models.Security.EnterpriseSsoOptions>(configuration.GetSection(PersonalAIAssistant.Memory.Core.Models.Security.EnterpriseSsoOptions.SectionName));
 
             services.AddSingleton<PersonalAIAssistant.Memory.Infrastructure.Security.SimulatedFipsHsmKeyVaultService>();
@@ -265,6 +266,11 @@ namespace PersonalAIAssistant.Memory.Infrastructure.Extensions
             services.AddSingleton<PersonalAIAssistant.Memory.Infrastructure.Security.AesGcmEncryptionService>();
             services.AddSingleton<IEncryptionService, PersonalAIAssistant.Memory.Infrastructure.Security.HsmEnvelopeEncryptionService>();
 
+            services.AddHttpClient("oidc-discovery", client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(15);
+            });
+            services.AddSingleton<ISamlAssertionReplayCache, PersonalAIAssistant.Memory.Infrastructure.Security.InMemorySamlAssertionReplayCache>();
             services.AddScoped<IEnterpriseIdentityProviderService, PersonalAIAssistant.Memory.Infrastructure.Security.EnterpriseIdentityProviderService>();
             services.AddSingleton<IUiCapabilitiesService, PersonalAIAssistant.Memory.Infrastructure.Security.UiCapabilitiesService>();
 

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using PersonalAIAssistant.Memory.Core.Interfaces.Security;
 
 namespace PersonalAIAssistant.Memory.Api.Controllers
@@ -13,13 +14,18 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
     /// <summary>
     /// Enterprise SSO &amp; Identity Federation Controller.
     /// Exposes endpoints for OIDC (Azure AD / Entra ID, PingOne) and SAML 2.0 (PingFederate, ADFS)
-    /// token validation, claims normalization, and FIPS 140-2 Level 3 HSM-backed session token minting.
+    /// token validation, claims normalization, and session token minting.
     /// </summary>
     [ApiController]
     [Route("api/v1/auth/enterprise")]
     [Produces("application/json")]
     public sealed class EnterpriseAuthController : ControllerBase
     {
+        private const int MaxOidcRequestBytes = 65_536;
+        private const int MaxOidcTokenLength = 32_768;
+        private const int MaxSamlRequestBytes = 524_288;
+        private const int MaxSamlPayloadLength = 524_288;
+
         private readonly IEnterpriseIdentityProviderService _idpService;
         private readonly IHsmKeyVaultService _hsmKeyVault;
         private readonly ILogger<EnterpriseAuthController> _logger;
@@ -39,11 +45,21 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
         /// </summary>
         [HttpPost("oidc")]
         [AllowAnonymous]
+        [EnableRateLimiting("EnterpriseAuthPolicy")]
+        [RequestSizeLimit(MaxOidcRequestBytes)]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status413PayloadTooLarge)]
+        [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
         public async Task<IActionResult> ExchangeOidcToken([FromBody] OidcTokenExchangeRequest request, CancellationToken ct)
         {
+            if (Request.ContentLength > MaxOidcRequestBytes || request?.IdToken?.Length > MaxOidcTokenLength)
+            {
+                return StatusCode(StatusCodes.Status413PayloadTooLarge, new { error = "Request payload exceeds maximum allowed size." });
+            }
+
             if (string.IsNullOrWhiteSpace(request?.IdToken) || string.IsNullOrWhiteSpace(request?.TenantId))
             {
                 return BadRequest(new { error = "Both IdToken and TenantId are required." });
@@ -68,7 +84,7 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
             catch (UnauthorizedAccessException ex)
             {
                 _logger.LogWarning(ex, "[Enterprise SSO] Cross-tenant or unauthorized OIDC attempt.");
-                return StatusCode(StatusCodes.Status403Forbidden, new { error = ex.Message });
+                return StatusCode(StatusCodes.Status403Forbidden, new { error = "Access denied for the requested tenant." });
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -77,7 +93,7 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "[Enterprise SSO] OIDC Token exchange failed.");
-                return Unauthorized(new { error = ex.Message });
+                return Unauthorized(new { error = "Enterprise SSO authentication failed." });
             }
         }
 
@@ -86,11 +102,21 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
         /// </summary>
         [HttpPost("saml")]
         [AllowAnonymous]
+        [EnableRateLimiting("EnterpriseAuthPolicy")]
+        [RequestSizeLimit(MaxSamlRequestBytes)]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status413PayloadTooLarge)]
+        [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
         public async Task<IActionResult> ExchangeSamlAssertion([FromBody] SamlAssertionExchangeRequest request, CancellationToken ct)
         {
+            if (Request.ContentLength > MaxSamlRequestBytes || request?.SamlAssertionXml?.Length > MaxSamlPayloadLength)
+            {
+                return StatusCode(StatusCodes.Status413PayloadTooLarge, new { error = "Request payload exceeds maximum allowed size." });
+            }
+
             if (string.IsNullOrWhiteSpace(request?.SamlAssertionXml) || string.IsNullOrWhiteSpace(request?.TenantId))
             {
                 return BadRequest(new { error = "Both SamlAssertionXml and TenantId are required." });
@@ -115,7 +141,7 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
             catch (UnauthorizedAccessException ex)
             {
                 _logger.LogWarning(ex, "[Enterprise SSO] Cross-tenant or unauthorized SAML attempt.");
-                return StatusCode(StatusCodes.Status403Forbidden, new { error = ex.Message });
+                return StatusCode(StatusCodes.Status403Forbidden, new { error = "Access denied for the requested tenant." });
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -124,7 +150,7 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "[Enterprise SSO] SAML Assertion exchange failed.");
-                return Unauthorized(new { error = ex.Message });
+                return Unauthorized(new { error = "Enterprise SSO authentication failed." });
             }
         }
 
@@ -133,6 +159,7 @@ namespace PersonalAIAssistant.Memory.Api.Controllers
         /// </summary>
         [HttpGet("metadata/{tenantId}")]
         [AllowAnonymous]
+        [EnableRateLimiting("EnterpriseAuthPolicy")]
         [Produces("application/xml")]
         public IActionResult GetSpMetadata([FromRoute] string tenantId)
         {

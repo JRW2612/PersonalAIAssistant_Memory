@@ -21,8 +21,10 @@ namespace PersonalAIAssistant.Memory.Core.Models.Security
         public string Domain { get; set; } = string.Empty; // e.g. "hdfcbank.com"
         public string Protocol { get; set; } = "OIDC";     // "OIDC" or "SAML2"
         public string Authority { get; set; } = string.Empty; // e.g. "https://login.microsoftonline.com/{tenant}/v2.0"
+        public string? ValidIssuer { get; set; }
         public string ClientId { get; set; } = string.Empty;
         public string Audience { get; set; } = string.Empty;
+        public string? AssertionConsumerServiceUrl { get; set; }
         public string? IdpMetadataUrl { get; set; }
         public string? SigningCertThumbprint { get; set; }
         public string? SigningPublicKeyXmlOrPem { get; set; }
