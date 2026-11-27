@@ -37,6 +37,16 @@ public class CompressMemoryCommandHandler : IRequestHandler<CompressMemoryComman
         if (eventHistory == null || !eventHistory.Any())
             throw new KeyNotFoundException($"No events found for memory with ID {streamId}");
 
+        // BOLA / IDOR Defense: verify memory ownership
+        var ownerUserId = eventHistory.Select(e => e.UserId).FirstOrDefault(u => !string.IsNullOrWhiteSpace(u));
+        if (!string.IsNullOrWhiteSpace(ownerUserId) &&
+            !string.IsNullOrWhiteSpace(request.UserId) &&
+            !string.Equals(request.UserId, "system", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(ownerUserId, request.UserId, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new UnauthorizedAccessException($"Memory '{request.OriginalMemoryId}' does not belong to user '{request.UserId}'.");
+        }
+
         var aggregate = new MemoryAggregate(new MemoryId(request.OriginalMemoryId));
         aggregate.LoadFromHistory(eventHistory);
 

@@ -78,6 +78,10 @@ public class ConsolidateMemoriesCommandHandler : IRequestHandler<ConsolidateMemo
                 "[Consolidate] AI enrichment complete — provider: {Provider}, memoryId: {Id}",
                 provider.ProviderName, request.NewMemoryId);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(ex,

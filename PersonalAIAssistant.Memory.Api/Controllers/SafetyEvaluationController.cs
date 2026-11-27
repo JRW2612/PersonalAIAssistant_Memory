@@ -72,6 +72,18 @@ public class SafetyEvaluationController : ControllerBase
     private string GetCurrentUserId() =>
         _userContext.UserId ?? User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous";
 
+    private bool CanAccessEpisode(AgentTrajectoryEpisode episode)
+    {
+        if (_userContext.IsAdmin) return true;
+        var currentUserId = GetCurrentUserId();
+        if (!string.IsNullOrEmpty(episode.UserId) && string.Equals(episode.UserId, currentUserId, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (!string.IsNullOrEmpty(episode.TenantId) && !string.IsNullOrEmpty(_userContext.TenantId) &&
+            string.Equals(episode.TenantId, _userContext.TenantId, StringComparison.OrdinalIgnoreCase))
+            return true;
+        return false;
+    }
+
     /// <summary>
     /// Initializes a new physical agent evaluation episode with optional fault injection and step budget.
     /// </summary>
@@ -124,6 +136,12 @@ public class SafetyEvaluationController : ControllerBase
         if (episode == null)
             return NotFound(new { error = "episode_not_found", message = $"Episode '{episodeId}' not found." });
 
+        if (!CanAccessEpisode(episode))
+        {
+            _auditLogger.LogAccessDenied(GetCurrentUserId(), "RECORD_TURN", episodeId.ToString(), "Cross-user or cross-tenant episode modification forbidden.");
+            return Forbid();
+        }
+
         var turnIndex = episode.Turns.Count;
 
         // Evaluate interlocks for this action
@@ -168,6 +186,12 @@ public class SafetyEvaluationController : ControllerBase
         if (episode == null)
             return NotFound(new { error = "episode_not_found", message = $"Episode '{episodeId}' not found." });
 
+        if (!CanAccessEpisode(episode))
+        {
+            _auditLogger.LogAccessDenied(GetCurrentUserId(), "CONCLUDE_EPISODE", episodeId.ToString(), "Cross-user or cross-tenant episode conclusion forbidden.");
+            return Forbid();
+        }
+
         episode.ClaimedOutcome = dto.ClaimedOutcome;
         episode.GroundTruthOutcome = dto.GroundTruthOutcome;
         episode.CompletedAt = DateTimeOffset.UtcNow;
@@ -195,6 +219,12 @@ public class SafetyEvaluationController : ControllerBase
         if (episode == null)
             return NotFound(new { error = "episode_not_found", message = $"Episode '{episodeId}' not found." });
 
+        if (!CanAccessEpisode(episode))
+        {
+            _auditLogger.LogAccessDenied(GetCurrentUserId(), "EVALUATE_EPISODE", episodeId.ToString(), "Cross-user or cross-tenant episode evaluation forbidden.");
+            return Forbid();
+        }
+
         var report = _evaluationService.EvaluateEpisode(episode, overrides);
         return Ok(report);
     }
@@ -212,6 +242,12 @@ public class SafetyEvaluationController : ControllerBase
         if (episode == null)
             return NotFound(new { error = "episode_not_found", message = $"Episode '{episodeId}' not found." });
 
+        if (!CanAccessEpisode(episode))
+        {
+            _auditLogger.LogAccessDenied(GetCurrentUserId(), "GET_EPISODE", episodeId.ToString(), "Cross-user or cross-tenant episode access forbidden.");
+            return Forbid();
+        }
+
         return Ok(episode);
     }
 
@@ -228,6 +264,15 @@ public class SafetyEvaluationController : ControllerBase
         CancellationToken ct = default)
     {
         var episodes = await _episodeRepo.ListEpisodesAsync(taskId, agentModel, limit, ct);
+        if (!_userContext.IsAdmin)
+        {
+            var currentUserId = GetCurrentUserId();
+            var tenantId = _userContext.TenantId;
+            episodes = episodes.Where(e =>
+                (!string.IsNullOrEmpty(e.UserId) && string.Equals(e.UserId, currentUserId, StringComparison.OrdinalIgnoreCase)) ||
+                (!string.IsNullOrEmpty(e.TenantId) && !string.IsNullOrEmpty(tenantId) && string.Equals(e.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
+            ).ToList();
+        }
         return Ok(episodes);
     }
 
@@ -246,9 +291,21 @@ public class SafetyEvaluationController : ControllerBase
         if (episodeA == null)
             return NotFound(new { error = "episode_a_not_found", message = $"Episode A '{dto.EpisodeIdA}' not found." });
 
+        if (!CanAccessEpisode(episodeA))
+        {
+            _auditLogger.LogAccessDenied(GetCurrentUserId(), "COMPARE_EPISODES", dto.EpisodeIdA.ToString(), "Cross-user or cross-tenant episode access forbidden.");
+            return Forbid();
+        }
+
         var episodeB = await _episodeRepo.GetEpisodeByIdAsync(dto.EpisodeIdB, ct);
         if (episodeB == null)
             return NotFound(new { error = "episode_b_not_found", message = $"Episode B '{dto.EpisodeIdB}' not found." });
+
+        if (!CanAccessEpisode(episodeB))
+        {
+            _auditLogger.LogAccessDenied(GetCurrentUserId(), "COMPARE_EPISODES", dto.EpisodeIdB.ToString(), "Cross-user or cross-tenant episode access forbidden.");
+            return Forbid();
+        }
 
         var comparativeReport = _evaluationService.CompareEpisodes(episodeA, episodeB);
         return Ok(comparativeReport);
