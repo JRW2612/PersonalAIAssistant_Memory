@@ -50,7 +50,7 @@ if (string.IsNullOrWhiteSpace(userGeminiKey) && !Console.IsInputRedirected && ar
     if (!string.IsNullOrWhiteSpace(inputUser)) userId = inputUser;
 
     Console.ForegroundColor = ConsoleColor.Yellow;
-    Console.WriteLine($"[Client AI App] User '{userId}' authenticated.");
+    Console.WriteLine($"[Client AI App] Using local demo identity '{userId}'. No login provider is called.");
     Console.Write("Enter User's Gemini API Key (optional, press Enter for Mock Mode): ");
     Console.ResetColor();
     var inputKey = Console.ReadLine()?.Trim();
@@ -89,15 +89,15 @@ if (useRealGemini)
     builder.Configuration["AI:Gemini:CompressionModel"] = "gemini-1.5-flash";
 
     Console.ForegroundColor = ConsoleColor.Green;
-    Console.WriteLine($"\n[Login Successful] User '{userId}' authenticated with dynamic Gemini key.");
-    Console.WriteLine("[Security Verified] API key is bound dynamically to IUserContext (BYOK) — no server configuration modified.");
+    Console.WriteLine($"\n[Demo Key Loaded] Local demo identity '{userId}' has a Gemini key for this process.");
+    Console.WriteLine("[Demo Configuration] The key is supplied to IUserContext; this is not an authentication flow.");
     Console.ResetColor();
 }
 else
 {
     builder.Configuration["AI:Default"] = "mock";
     Console.ForegroundColor = ConsoleColor.DarkYellow;
-    Console.WriteLine($"\n[Login] User '{userId}' authenticated in local offline MOCK Mode.");
+    Console.WriteLine($"\n[Demo Identity] Using '{userId}' in local offline MOCK Mode; no user authentication is performed.");
     Console.ResetColor();
 }
 
@@ -373,7 +373,7 @@ static async Task RunGitHubCopilotDemoAsync(
     Console.WriteLine("  Resolved Role: ServicePrincipal (Delegated to user: 'user-alice')");
     Console.WriteLine("  Granted Scope: memory:read, memory:write");
     Console.ForegroundColor = ConsoleColor.Green;
-    Console.WriteLine("  [Auth Status]  200 OK — Scoped M2M Bearer Token issued.\n");
+    Console.WriteLine("  [Illustration] No OIDC exchange or token issuance is performed by this offline scenario.\n");
     Console.ResetColor();
 
     // Step 2: Ingest Team Architecture Decision Record (ADR) and Developer Conventions
@@ -510,7 +510,7 @@ static async Task RunAmazonRufusDemoAsync(
     Console.WriteLine("  Federation:     arn:aws:iam::123456789012:role/AmazonRufusMemoryFederation");
     Console.WriteLine("  Granted Scope:  memory:read, memory:write");
     Console.ForegroundColor = ConsoleColor.Green;
-    Console.WriteLine("  [Auth Status]   200 OK — Authorized with shopper delegation to 'user-alice'.\n");
+    Console.WriteLine("  [Illustration] No AWS identity exchange or delegation token is performed by this offline scenario.\n");
     Console.ResetColor();
 
     // Step 2: Ingest Shopper Profile, Allergy Alerts & Past Purchases
@@ -817,7 +817,7 @@ static async Task RunSecurityAndOutboxDemoAsync(IServiceScope scope)
     Console.WriteLine($" -> Replay completed successfully: Status = {replayed?.Status}, RemoteId = {replayed?.ExternalReferenceId}");
 
     Console.ForegroundColor = ConsoleColor.Green;
-    Console.WriteLine("\n[VERIFICATION PASSED] All Security, Authorization, Outbox and DLQ scenarios validated successfully!");
+    Console.WriteLine("\n[DEMO COMPLETE] Scenarios used demo registrations. Production-component checks belong in the automated test suite.");
     Console.ResetColor();
 }
 
@@ -872,7 +872,7 @@ static async Task RunMicrosoftTeamsDemoAsync(IServiceScope scope)
     Console.WriteLine(" -> Message Format: Microsoft Teams Adaptive Card (version 1.4)");
     Console.WriteLine($" -> Dispatched JSON: {mockHandler.LastRequestBody}");
     Console.ForegroundColor = ConsoleColor.Green;
-    Console.WriteLine(" -> HTTP Status: 200 OK — Adaptive Card successfully delivered to Microsoft Teams Channel!");
+    Console.WriteLine(" -> Mock HTTP Status: 200 OK — the recording handler accepted the Adaptive Card payload.");
     Console.ResetColor();
 
     // ── SCENARIO 2: SSRF Attack Defense (Cloud Metadata & Private IP Protection) ─
@@ -907,7 +907,7 @@ static async Task RunMicrosoftTeamsDemoAsync(IServiceScope scope)
     {
         Console.ForegroundColor = ConsoleColor.Green;
         Console.WriteLine($" -> [SHIELD ACTIVE] SSRF Attack Blocked: {ssrfEx.Message}");
-        Console.WriteLine(" -> Verified: Outgoing HTTP connection was intercepted and aborted before leaving server.");
+        Console.WriteLine(" -> URL validator rejected the destination before the sender issued an HTTP request.");
         Console.ResetColor();
     }
 
@@ -939,7 +939,7 @@ static async Task RunMicrosoftTeamsDemoAsync(IServiceScope scope)
     await teamsSender.SendAsync(alertTitle, alertBody);
     Console.ForegroundColor = ConsoleColor.Green;
     Console.WriteLine(" -> Real-time Adaptive Card Security Alert dispatched to InfoSec Microsoft Teams Channel!");
-    Console.WriteLine("\n[VERIFICATION PASSED] Microsoft Teams Adaptive Card dispatch, SSRF defense, and SOC alerts verified successfully!");
+    Console.WriteLine("\n[DEMO COMPLETE] Delivery and SOC alert paths used a recording HTTP handler; automated tests exercise the sender and URL validator.");
     Console.ResetColor();
 }
 

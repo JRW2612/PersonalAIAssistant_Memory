@@ -37,23 +37,7 @@ public class RetentionWorker : BackgroundService
         {
             try
             {
-                using (var scope = _scopeFactory.CreateScope())
-                {
-                    var retentionStore = scope.ServiceProvider.GetRequiredService<IRetentionQueryStore>();
-                    var lockStore = scope.ServiceProvider.GetRequiredService<IProcessingLockStore>();
-                    var readRepo = scope.ServiceProvider.GetRequiredService<IReadModelRepository>();
-                    var eventStore = scope.ServiceProvider.GetRequiredService<IEventStore>();
-
-                    await ProcessExpiredMemoriesAsync(retentionStore, lockStore, eventStore, stoppingToken);
-
-                    if (_opts.HardDeleteEnabled)
-                    {
-                        await ProcessArchivedMemoriesAsync(retentionStore, lockStore, eventStore, stoppingToken);
-                    }
-
-                    await EnforceCapacityLimitAsync(readRepo, "default", stoppingToken);
-                }
-
+                await RunRetentionSweepAsync(stoppingToken);
                 await Task.Delay(delay, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -68,6 +52,28 @@ public class RetentionWorker : BackgroundService
         }
 
         _logger.LogInformation("RetentionWorker stopping.");
+    }
+
+    /// <summary>
+    /// Runs one retention pass. Exposed so operations and integration tests can
+    /// execute the same worker path without starting a background host.
+    /// </summary>
+    public async Task RunRetentionSweepAsync(CancellationToken ct)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var retentionStore = scope.ServiceProvider.GetRequiredService<IRetentionQueryStore>();
+        var lockStore = scope.ServiceProvider.GetRequiredService<IProcessingLockStore>();
+        var readRepo = scope.ServiceProvider.GetRequiredService<IReadModelRepository>();
+        var eventStore = scope.ServiceProvider.GetRequiredService<IEventStore>();
+
+        await ProcessExpiredMemoriesAsync(retentionStore, lockStore, eventStore, ct);
+
+        if (_opts.HardDeleteEnabled)
+        {
+            await ProcessArchivedMemoriesAsync(retentionStore, lockStore, eventStore, ct);
+        }
+
+        await EnforceCapacityLimitAsync(readRepo, "default", ct);
     }
 
     private async Task ProcessExpiredMemoriesAsync(
