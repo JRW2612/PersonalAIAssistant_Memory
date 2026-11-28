@@ -46,7 +46,7 @@ jobs:
           dotnet test "PersonalAIAssistant.Memory.sln" --configuration Release --no-build --logger "trx;LogFileName=test_results.trx" --collect:"XPlat Code Coverage"
 
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results
           path: '**/test_results.trx'
@@ -72,7 +72,7 @@ jobs:
           reportgenerator -reports:"**/coverage.cobertura.xml" -targetdir:coverage-report -reporttypes:Html;XmlSummary;lcov
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage-report
@@ -86,7 +86,7 @@ jobs:
           python3 -c "cov=float('${COVERAGE}'); exit(0) if cov >= 80.0 else (print(f'FAIL: Coverage {cov:.1f}% is below the required 80.0% minimum.') or exit(1))"
 
       - name: Upload raw coverage files
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-raw
           path: '**/coverage.cobertura.xml'
@@ -108,7 +108,7 @@ jobs:
           dotnet pack "PersonalAIAssistant.Memory.sln" -c Release -o ./artifacts --no-build
 
       - name: Upload packages/artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-artifacts
           path: artifacts
