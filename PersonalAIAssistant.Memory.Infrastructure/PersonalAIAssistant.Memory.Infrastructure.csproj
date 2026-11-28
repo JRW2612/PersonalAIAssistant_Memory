@@ -17,10 +17,10 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Abstractions" Version="8.0.28" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.28" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
-    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="8.8.0" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="11.0.1" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.3" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
-    <PackageReference Include="Microsoft.Extensions.Resilience" Version="8.8.0" />
+    <PackageReference Include="Microsoft.Extensions.Resilience" Version="11.0.1" />
     <PackageReference Include="MongoDB.Driver" Version="3.9.0" />
     <PackageReference Include="Qdrant.Client" Version="1.19.0" />
     <PackageReference Include="StackExchange.Redis" Version="2.8.24" />
